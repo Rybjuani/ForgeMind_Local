@@ -1,0 +1,14 @@
+{
+  "_comment": "Settings globales. En el MVP la UI no usa este archivo todavia; esta como ejemplo/contrato futuro. NO commitees rutas personales ni claves.",
+
+  "default_backend_kind": "llama_cli",
+  "default_threads": 8,
+  "default_ctx_size": 4096,
+  "default_mode": "cpu",
+
+  "results_dir": "benchmarks/results",
+  "prompts_file": "benchmarks/prompts_es.json",
+
+  "metrics_refresh_ms": 1500,
+  "streaming": false
+}

@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Modelos y binarios pesados (NUNCA commitear)
+*.gguf
+*.bin
+*.safetensors
+models/
+model/
+
+# Resultados de benchmark (se regeneran; mantenemos carpeta trackeada via .gitkeep)
+benchmarks/results/*
+!benchmarks/results/.gitkeep
+
+# Configs reales (las plantillas .example.json SI se commitean)
+configs/*.local.json
+configs/*.real.json
+configs/models.json
+configs/settings.json
+
+# Entorno / secretos
+.env
+.env.*
+secrets.*
+
+# Logs
+*.log
