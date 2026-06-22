@@ -14,7 +14,14 @@ env/
 # PyInstaller
 build/
 dist/
+# Ignoramos specs autogenerados por `pyinstaller --onefile script.py` (patron `*.spec`),
+# pero NO el spec del proyecto (forgemind.spec).
+auto-*.spec
+script.spec
+myapp.spec
+forge.spec
 *.spec
+!forgemind.spec
 
 # IDE
 .vscode/

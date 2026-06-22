@@ -7,7 +7,7 @@ Ollama, LM Studio, mock) implementa este contrato.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Iterator
 
 from .model_config import ModelConfig
 
@@ -42,6 +42,13 @@ class BackendBase(ABC):
     @abstractmethod
     def generate(self, prompt: str, system: str = "") -> str:
         """Genera respuesta. NO debe raise. Devuelve mock-labelled en caso de fallo."""
+
+    def generate_stream(self, prompt: str, system: str = "") -> Iterator[str]:
+        """Default: yield todo el resultado de generate() en un solo chunk.
+
+        Los backends que soporten streaming real deben override.
+        """
+        yield self.generate(prompt, system)
 
     # ----- Observabilidad -----
 

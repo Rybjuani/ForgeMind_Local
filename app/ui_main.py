@@ -33,31 +33,15 @@ from .presets import PRESETS, get_preset, default_preset
 
 # ----------------- Worker thread (no bloquea UI) -----------------
 
-class GenerateWorker(QObject):
-    finished = pyqtSignal(str, dict)   # texto, metrics
-    failed = pyqtSignal(str)           # mensaje
-
-    def __init__(self, backend: LlamaBackend, prompt: str, system: str) -> None:
-        super().__init__()
-        self._backend = backend
-        self._prompt = prompt
-        self._system = system
-
-    def run(self) -> None:
-        from .metrics import measure_inference
-        m = measure_inference(self._backend.generate, self._prompt, self._system)
-        out = self._backend.generate(self._prompt, self._system)
-        # measure_inference ya corrio generate; lo corremos otra vez seria doble trabajo.
-        # Mejor: medir dentro de run para no duplicar. Pero el contrato de generate()
-        # NO debe raise; aqui podemos envolver.
-        # Solucion limpia: medimos alrededor de una sola llamada.
-        self.finished.emit(out, m)
-
-
 class GenerateRunner(QThread):
-    """Thread wrapper que SI mide una sola vez y no duplica generate()."""
-    finished = pyqtSignal(str, dict)
-    failed = pyqtSignal(str)
+    """Thread wrapper que usa generate_stream() y mide first_token_sec.
+
+    Emite `token` por cada chunk recibido y `finished` al final con el texto
+    completo + metrics. NO duplica generate().
+    """
+    token = pyqtSignal(str)             # chunk de texto recibido
+    finished = pyqtSignal(str, dict)    # texto completo + metrics
+    failed = pyqtSignal(str)            # mensaje de error
 
     def __init__(self, backend: LlamaBackend, prompt: str, system: str,
                  max_tokens_override: int | None = None) -> None:
@@ -68,26 +52,36 @@ class GenerateRunner(QThread):
         self._override = max_tokens_override
 
     def run(self) -> None:
-        from .metrics import measure_inference
         old_max = self._backend.config.max_tokens
         if self._override is not None:
             self._backend.config.max_tokens = self._override
         try:
             t0 = time.perf_counter()
+            first_token_sec: float | None = None
+            chunks: list[str] = []
             try:
-                out = self._backend.generate(self._prompt, self._system)
-            except Exception as e:  # no deberia, pero por si acaso
+                for chunk in self._backend.generate_stream(self._prompt, self._system):
+                    if first_token_sec is None and chunk:
+                        first_token_sec = time.perf_counter() - t0
+                    if chunk:
+                        chunks.append(chunk)
+                        self.token.emit(chunk)
+                    if self.isInterruptionRequested():
+                        # Pedimos abort -> matar el proc best-effort
+                        self._backend.request_abort()
+                        break
+                out = "".join(chunks)
+                elapsed = time.perf_counter() - t0
+                m = {
+                    "elapsed_sec": round(elapsed, 3),
+                    "char_count": len(out),
+                    "tokens_per_sec_proxy": round((len(out) / 4.0) / elapsed, 3) if elapsed > 0 else None,
+                    "first_token_sec": round(first_token_sec, 3) if first_token_sec is not None else None,
+                    "error": None,
+                }
+                self.finished.emit(out, m)
+            except Exception as e:  # generate_stream NO deberia raise, pero por si acaso
                 self.failed.emit(str(e))
-                return
-            elapsed = time.perf_counter() - t0
-            m = {
-                "elapsed_sec": round(elapsed, 3),
-                "char_count": len(out),
-                "tokens_per_sec_proxy": round((len(out) / 4.0) / elapsed, 3) if elapsed > 0 else None,
-                "first_token_sec": None,
-                "error": None,
-            }
-            self.finished.emit(out, m)
         finally:
             self._backend.config.max_tokens = old_max
 
@@ -103,6 +97,7 @@ class MainWindow(QMainWindow):
         self.backend = LlamaBackend(ModelConfig())
         self._chat_history: list[dict[str, str]] = []
         self._current_runner: GenerateRunner | None = None
+        self._gen_received_tokens: int = 0
 
         self._build_menu()
         self._build_tabs()
@@ -477,7 +472,9 @@ class MainWindow(QMainWindow):
         self.btn_send.setEnabled(False)
         self.btn_stop_gen.setEnabled(True)
         self.lbl_last_metrics.setText("generando...")
+        self._gen_received_tokens = 0
         runner = GenerateRunner(self.backend, prompt, system, max_tokens_override=max_tokens)
+        runner.token.connect(self._on_token_received)
         runner.finished.connect(self._on_gen_finished)
         runner.failed.connect(self._on_gen_failed)
         runner.finished.connect(runner.deleteLater)
@@ -485,20 +482,32 @@ class MainWindow(QMainWindow):
         self._current_runner = runner
         runner.start()
 
+    def _on_token_received(self, chunk: str) -> None:
+        # Append streaming en vivo al area de salida del modelo.
+        self.txt_output.moveCursor(self.txt_output.textCursor().MoveOperation.End)
+        self.txt_output.insertPlainText(chunk)
+        self._gen_received_tokens += 1
+
     def _on_stop_gen(self) -> None:
         if self._current_runner is not None and self._current_runner.isRunning():
             self._current_runner.requestInterruption()
-            # Subprocesos one-shot de llama-cli no se pueden matar "a medias" sin hack;
-            # lo dejamos: el runner termina cuando subprocess termina.
-            self._log("stop solicitado (runner se marcara al terminar)")
+            self._backend.request_abort()
+            self._log("stop solicitado")
         self.btn_stop_gen.setEnabled(False)
 
     def _on_gen_finished(self, out: str, metrics: dict[str, Any]) -> None:
-        self._append_chat("assistant", out)
+        # Si NO recibimos tokens streaming (mock / binding sin stream), agregamos el texto.
+        if self._gen_received_tokens == 0:
+            self.txt_output.moveCursor(self.txt_output.textCursor().MoveOperation.End)
+            self.txt_output.insertPlainText(out)
+        self.txt_output.appendPlainText("")  # separador
         tps = metrics.get("tokens_per_sec_proxy")
         tps_s = f"{tps:.2f} t/s" if isinstance(tps, (int, float)) else "?"
+        first = metrics.get("first_token_sec")
+        first_s = f"{first:.3f}s" if isinstance(first, (int, float)) else "?"
         self.lbl_last_metrics.setText(
-            f"{metrics.get('elapsed_sec','?')} s | {metrics.get('char_count','?')} chars | {tps_s}"
+            f"{metrics.get('elapsed_sec','?')} s | {metrics.get('char_count','?')} chars | "
+            f"{tps_s} | 1er token {first_s}"
         )
         self.btn_send.setEnabled(True)
         self.btn_stop_gen.setEnabled(False)
@@ -506,7 +515,7 @@ class MainWindow(QMainWindow):
         self._refresh_metrics_panel()
 
     def _on_gen_failed(self, err: str) -> None:
-        self._append_chat("assistant", f"[error] {err}")
+        self.txt_output.appendPlainText(f"\n[error] {err}\n")
         self.btn_send.setEnabled(True)
         self.btn_stop_gen.setEnabled(False)
         self._current_runner = None

@@ -62,24 +62,33 @@ ForgeMind_Local/
   app/                # codigo Python (main, UI, backend, metrics, gpu_detect, benchmark, presets)
   configs/            # ejemplos .example.json (NO commitear configs reales)
   benchmarks/         # prompts_es.json + results/
-  scripts/            # run.ps1, check_env.ps1
-  docs/               # notas (modelos, backends, vulkan, uso diario)
+  scripts/            # run.ps1, check_env.ps1, build.ps1
+  docs/               # notas (modelos, backends, vulkan, uso diario, build)
+  tests/              # pytest, 92 tests
+  run.py              # entry shim para PyInstaller
+  forgemind.spec      # spec de PyInstaller
 ```
 
-## Reglas del proyecto
+## Tests
 
-- No inventar benchmarks.
-- No afirmar compatibilidad Vulkan sin medir.
-- No descargar modelos automaticamente.
-- No usar APIs externas / cloud.
-- CPU = modo base confiable. Vulkan = opcional y medible.
-- UI no se bloquea durante inferencia (worker thread).
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
 
-## Pendiente MVP
+92 tests cubren: config, metrics, presets, backend mock, benchmark, gpu_detect (mockeado), backend_base, smoke test end-to-end. Tarda ~11 s.
 
-- Streaming real (medir tiempo a primer token).
-- Historial de multiples benchmarks comparativos.
-- Selector de backend alternativo (Ollama local, LM Studio API local).
-- Empaquetado a `.exe` (PyInstaller).
+## Build a .exe (PyInstaller)
 
-Ver `docs/MODEL_NOTES.md`, `docs/BACKENDS.md`, `docs/VULKAN_NOTES.md`, `docs/DAILY_USE_NOTES.md`.
+```powershell
+pip install pyinstaller
+.\scripts\build.ps1              # genera dist\ForgeMind.exe (~70-90 MB)
+.\scripts\build.ps1 -Clean       # limpia build/ y dist/ antes
+.\scripts\build.ps1 -NoUpx       # desactiva compresor UPX
+```
+
+Ver `docs/BUILD.md` para detalle del shim `run.py` y opciones.
+
+## Streaming + first-token timing
+
+Chat usa `generate_stream()` (Popen stdout streaming para `llama-cli`, HTTP chunked para `llama-server`). Mide `first_token_sec` (tiempo a primer chunk) ademas de `elapsed_sec` y `tokens_per_sec_proxy`. El boton "Detener generacion" mata el subprocess best-effort.

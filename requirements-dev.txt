@@ -1,0 +1,7 @@
+PyQt6>=6.7
+psutil>=5.9
+pytest>=8.0
+
+# Opcionales runtime (NO instalar si no los queres):
+# llama-cpp-python  -> solo si vas a usar backend_kind = "llama_cpp" (binding Python)
+# pyinstaller       -> solo si queres empaquetar a .exe (alternativa: scripts/build.ps1)

@@ -9,7 +9,7 @@ Tres modos (segun ModelConfig.backend_kind):
                       `llama-cpp-python`; NO es hard dependency).
 
 Si nada esta disponible, arranca en modo MOCK y generate() devuelve una
-respuesta etiquetada. Nunca raise desde generate().
+respuesta etiquetada. Nunca raise desde generate() ni generate_stream().
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import urllib.request
 import urllib.error
 import json
 from threading import Lock, Thread
-from typing import Any
+from typing import Any, Iterator
 
 from .backend_base import BackendBase
 from .metrics import find_executable, get_process_metrics, peak_rss_self
@@ -98,6 +98,7 @@ class LlamaBackend(BackendBase):
         super().__init__(config)
         self._lock = Lock()
         self._proc: subprocess.Popen | None = None
+        self._active_proc: subprocess.Popen | None = None  # proc de generate_stream en curso
         self._server_port: int = 8081
         self._mock: bool = False
         self._backend_kind_active: str = "mock"  # lo que realmente se uso
@@ -206,27 +207,29 @@ class LlamaBackend(BackendBase):
 
     def stop(self) -> None:
         with self._lock:
-            try:
-                if self._proc is not None and self._proc.poll() is None:
-                    if os.name == "nt":
-                        try:
-                            self._proc.terminate()
-                        except Exception:
-                            pass
-                    else:
-                        try:
-                            self._proc.send_signal(signal.SIGTERM)
-                        except Exception:
-                            pass
+            # Abortar generacion en curso primero
+            for p in (self._proc, self._active_proc):
+                if p is not None and p.poll() is None:
                     try:
-                        self._proc.wait(timeout=5)
+                        if os.name == "nt":
+                            p.terminate()
+                        else:
+                            p.send_signal(signal.SIGTERM)
                     except Exception:
+                        pass
+            try:
+                for p in (self._proc, self._active_proc):
+                    if p is not None:
                         try:
-                            self._proc.kill()
+                            p.wait(timeout=3)
                         except Exception:
-                            pass
+                            try:
+                                p.kill()
+                            except Exception:
+                                pass
             finally:
                 self._proc = None
+                self._active_proc = None
                 self.last_pid = None
                 if self._binding is not None:
                     try:
@@ -283,6 +286,73 @@ class LlamaBackend(BackendBase):
 
         return self._mock_response(prompt, system)
 
+    def generate_stream(self, prompt: str, system: str = "") -> Iterator[str]:
+        """Yield chunks de texto conforme se producen. NO raise.
+
+        Cada chunk es un string (puede ser multi-linea si el backend asi emite).
+        El caller es responsable de medir first_token_sec al recibir el primer yield.
+        """
+        if self._backend_kind_active == "mock" and self._exe is None and self._binding is None:
+            self._resolve_mode()
+
+        # Mock -> yield todo junto
+        if self._mock or self._backend_kind_active == "mock":
+            yield self._mock_response(prompt, system)
+            return
+
+        # llama-cli subprocess streaming
+        if self._backend_kind_active == "llama_cli" and self._exe is not None:
+            yield from self._stream_via_cli(prompt, system)
+            return
+
+        # llama-server HTTP streaming
+        if self._backend_kind_active == "llama_server":
+            yield from self._stream_via_server(prompt, system)
+            return
+
+        # binding Python con stream=True si lo soporta
+        if self._backend_kind_active == "llama_cpp" and self._binding is not None:
+            try:
+                full = (f"{system}\n\n{prompt}" if system else prompt)
+                stream = self._binding(
+                    full,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                    top_p=self.config.top_p,
+                    repeat_penalty=self.config.repeat_penalty,
+                    stop=["</s>", "Usuario:"],
+                    stream=True,
+                )
+                for chunk in stream:
+                    piece = chunk.get("choices", [{}])[0].get("text") or ""
+                    if piece:
+                        yield piece
+            except TypeError:
+                # El binding no acepta stream=True -> fallback a generate()
+                yield self.generate(prompt, system)
+            except Exception as e:
+                self._load_error = f"stream error: {e}"
+                yield self._mock_response(prompt, system)
+            return
+
+        yield self._mock_response(prompt, system)
+
+    def request_abort(self) -> None:
+        """Pide abortar la generacion en curso. No raise. Best-effort."""
+        with self._lock:
+            proc = self._active_proc
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            if os.name == "nt":
+                proc.terminate()
+            else:
+                proc.send_signal(signal.SIGTERM)
+        except Exception as e:
+            self._load_error = f"abort failed: {e}"
+
+    # ---------- streaming interno ----------
+
     def _generate_via_cli(self, prompt: str, system: str) -> str:
         cmd = _build_cli_command(self.config, self._exe, prompt, system)
         self.last_command = " ".join(_quote(a) for a in cmd)
@@ -335,6 +405,95 @@ class LlamaBackend(BackendBase):
             except Exception:
                 time.sleep(0.4)
         return False
+
+    # ---------- streaming interno ----------
+
+    def _stream_via_cli(self, prompt: str, system: str) -> Iterator[str]:
+        cmd = _build_cli_command(self.config, self._exe, prompt, system)
+        self.last_command = " ".join(_quote(a) for a in cmd)
+        self.last_pid = None  # se actualiza al Popen
+        try:
+            # Importante: stdout=PIPE + text=True + bufsize=1 para leer linea a linea.
+            # NO usar shell=True (vulnerable + rompe quoting).
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # mezcla para que si hay error, lo veamos
+                text=True,
+                bufsize=1,
+                encoding="utf-8",
+                errors="replace",
+            )
+            self._active_proc = proc
+            self.last_pid = proc.pid
+            try:
+                if proc.stdout is None:
+                    return
+                for line in proc.stdout:
+                    # Filter el prompt que a veces se re-emite, y lineas de status
+                    s = line.rstrip("\n")
+                    if not s:
+                        continue
+                    if s.startswith(("llama_model_loader:", "llm_load_print:", "system_info:")):
+                        # log tecnico, no es contenido generado
+                        continue
+                    yield s + "\n"
+                ret = proc.wait()
+                if ret != 0:
+                    self._load_error = f"llama-cli exit {ret}"
+            finally:
+                self._active_proc = None
+        except subprocess.TimeoutExpired:
+            self._load_error = "llama-cli timeout (>600s)"
+        except Exception as e:
+            self._load_error = f"llama-cli stream fallo: {e}"
+
+    def _stream_via_server(self, prompt: str, system: str) -> Iterator[str]:
+        url = f"http://127.0.0.1:{self._server_port}/completion"
+        body = json.dumps({
+            "prompt": (f"{system}\n\n{prompt}" if system else prompt),
+            "n_predict": self.config.max_tokens,
+            "temperature": self.config.temperature,
+            "top_p": self.config.top_p,
+            "repeat_penalty": self.config.repeat_penalty,
+            "stream": True,
+            "stop": ["</s>", "Usuario:"],
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=body,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            resp = urllib.request.urlopen(req, timeout=600)
+            try:
+                for raw in resp:
+                    line = raw.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    # llama-server emite JSON lines o "data: {...}" (SSE)
+                    payload = line
+                    if line.startswith("data:"):
+                        payload = line[len("data:"):].strip()
+                    if payload in ("[DONE]", ""):
+                        continue
+                    try:
+                        obj = json.loads(payload)
+                    except Exception:
+                        # Texto plano -> emitir tal cual
+                        yield payload + "\n"
+                        continue
+                    chunk = obj.get("content")
+                    if chunk:
+                        yield chunk
+                    if obj.get("stop"):
+                        break
+            finally:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+        except urllib.error.URLError as e:
+            self._load_error = f"server unreachable: {e}"
+        except Exception as e:
+            self._load_error = f"server stream error: {e}"
 
     # ---------- observabilidad ----------
 
