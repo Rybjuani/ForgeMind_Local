@@ -214,7 +214,7 @@ QLabel#NavSectionLabel {
 
 QPushButton#NavBtn {
     background: transparent; color: #d8d4c8; border: none;
-    border-radius: 6px; padding: 7px 10px; text-align: left;
+    border-radius: 6px; padding: 6px 10px; text-align: left;
     font-size: 13px; font-weight: 450; letter-spacing: -0.005em;
     /* 3px accent left-bar via border (visible only when checked) */
     border-left: 3px solid transparent;
@@ -379,15 +379,15 @@ QFrame#MsgAvatar[role="ai"] { background: #d97757; }
 QLabel#MsgAvatarLabel { color: #d8d4c8; font-size: 12px; font-weight: 600; background: transparent; }
 QFrame#MsgAvatar[role="ai"] QLabel#MsgAvatarLabel { color: #1f1e1d; }
 
-/* Composer */
+/* Composer — Claude desktop style: more generous padding */
 QFrame#Composer {
     background: #2f2d2a; border: 1px solid #444039; border-radius: 20px;
 }
 QFrame#Composer:focus { border: 1px solid rgba(217,119,87,0.34); }
 QFrame[composer-focused="true"] { border: 1px solid rgba(217,119,87,0.34); }
 QPlainTextEdit#ComposerEdit {
-    background: transparent; border: none; padding: 4px 6px;
-    color: #f5f4ee; font-size: 14.5px;
+    background: transparent; border: none; padding: 6px 8px;
+    color: #f5f4ee; font-size: 15px;
 }
 
 QPushButton#PresetPill {
@@ -397,7 +397,7 @@ QPushButton#PresetPill {
 QPushButton#PresetPill:hover { background: rgba(255,255,255,0.045); color: #f5f4ee; border-color: #444039; }
 
 QPushButton#SendBtn {
-    background: #d97757; color: #1f1e1d; border: none; border-radius: 6px;
+    background: #d97757; color: #1f1e1d; border: none; border-radius: 8px;
     min-width: 32px; max-width: 32px; min-height: 32px; max-height: 32px;
 }
 QPushButton#SendBtn:hover { background: #c5663f; }
@@ -1331,11 +1331,17 @@ class Sidebar(QFrame):
         top.setSpacing(10)
         brand_box = QHBoxLayout()
         brand_box.setSpacing(10)
-        # Brand mark — orange rounded square with the checkmark SVG icon
-        # (replaces the previous "✓" text glyph with the mockup's exact icon).
+        # Brand mark — Claude desktop style: terracotta gradient + inset highlight
+        # Gradient is intentionally visible (#e08868 -> #b85530) to give the
+        # mark depth, like the Claude desktop brand mark.
         mark = QFrame(self)
         mark.setFixedSize(28, 28)
-        mark.setStyleSheet("background: #d97757; border-radius: 8px;")
+        mark.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+            "stop:0 #e08868, stop:0.5 #d97757, stop:1 #b85530); "
+            "border-radius: 8px; "
+            "border-top: 1px solid rgba(255,255,255,0.25);"
+        )
         mark_lay = QVBoxLayout(mark)
         mark_lay.setContentsMargins(0, 0, 0, 0)
         mark_lbl = svg_label(mark, "ai", color="#1f1e1d", size=15)
@@ -1434,9 +1440,8 @@ class Sidebar(QFrame):
         nc_row.addWidget(self.new_chat_lbl, 1)
         body.addWidget(self.new_chat_btn)
 
-        nav_label = QLabel("Workspace", self)
-        nav_label.setObjectName("NavSectionLabel")
-        body.addWidget(nav_label)
+        # Claude desktop: NO "WORKSPACE" section label above nav items.
+        # Go straight from new-chat button to the nav list.
 
         self.nav_buttons: dict[str, QPushButton] = {}
         # (key, label, icon name, kbd) — icons are real SVG paths from the
@@ -1459,14 +1464,51 @@ class Sidebar(QFrame):
         body.addStretch(1)
         root.addLayout(body, 1)
 
-        # --- Footer (RAM / t/s) ---
+        # --- Footer (user row + RAM/t-s) ---
+        # Claude desktop shows the user identity (avatar + name + chevron)
+        # at the bottom of the sidebar. We keep our RAM/t-s line below it
+        # because that's ForgeMind-specific telemetry the user needs.
         foot = QFrame(self)
         foot.setObjectName("SidebarFoot")
         foot_lay = QVBoxLayout(foot)
         foot_lay.setContentsMargins(8, 8, 8, 8)
-        foot_lay.setSpacing(4)
+        foot_lay.setSpacing(6)
+
+        # User row (Claude desktop style)
+        self.user_row = QPushButton(foot)
+        self.user_row.setObjectName("UserRow")
+        self.user_row.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.user_row.setStyleSheet(
+            "QPushButton#UserRow { background: transparent; border: 0; border-radius: 6px; "
+            "padding: 6px 8px; text-align: left; }"
+            "QPushButton#UserRow:hover { background: rgba(255,255,255,0.045); }"
+        )
+        ur_lay = QHBoxLayout(self.user_row)
+        ur_lay.setContentsMargins(0, 0, 0, 0)
+        ur_lay.setSpacing(10)
+        # Avatar: circle with initials "FM"
+        self.user_avatar = QLabel("FM", self.user_row)
+        self.user_avatar.setObjectName("UserAvatar")
+        self.user_avatar.setStyleSheet(
+            "background: #383531; color: #d8d4c8; border-radius: 12px; "
+            "min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; "
+            "font-size: 10px; font-weight: 600; qproperty-alignment: AlignCenter; "
+            "border: 1px solid #444039;"
+        )
+        ur_lay.addWidget(self.user_avatar)
+        self.user_name = QLabel("ForgeMind User", self.user_row)
+        self.user_name.setObjectName("UserName")
+        self.user_name.setStyleSheet(
+            "color: #d8d4c8; font-size: 12.5px; font-weight: 500; background: transparent; border: 0;"
+        )
+        ur_lay.addWidget(self.user_name, 1)
+        # Chevron up (Claude uses up-chevron for "open settings menu")
+        ur_lay.addWidget(svg_label(self.user_row, "preset-dot", color="#787469", size=14))
+        foot_lay.addWidget(self.user_row)
+
+        # RAM/t-s line (ForgeMind-specific, kept below the user row)
         self.foot_row = QHBoxLayout()
-        self.foot_row.setContentsMargins(0, 0, 0, 0)
+        self.foot_row.setContentsMargins(9, 0, 9, 0)
         self.foot_dot = QLabel("", self)
         self.foot_dot.setObjectName("FootDot")
         self.foot_text = QLabel("RAM — · — t/s", self)
@@ -1540,6 +1582,9 @@ class Sidebar(QFrame):
             # collapse new-chat label too
             if hasattr(self, "new_chat_lbl"):
                 self.new_chat_lbl.hide()
+            # collapse user row name (keep avatar)
+            if hasattr(self, "user_name"):
+                self.user_name.hide()
         else:
             self.setFixedWidth(260)
             for b in self.nav_buttons.values():
@@ -1555,6 +1600,8 @@ class Sidebar(QFrame):
             self.expand_btn.hide()
             if hasattr(self, "new_chat_lbl"):
                 self.new_chat_lbl.show()
+            if hasattr(self, "user_name"):
+                self.user_name.show()
 
     def set_model_card(self, *, name: str, quant: str, size_human: str,
                        ctx_size: int, running: bool) -> None:
@@ -1834,6 +1881,87 @@ class ChatScreen(QWidget):
         self.scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root.addWidget(self.scroll, 1)
 
+        # --- Empty state (Claude desktop style) ---
+        # When there are no messages, show a centered hero title + 4
+        # suggestion cards in a 2x2 grid. Hidden once the first message
+        # is sent.
+        self.empty_state = QFrame(self)
+        self.empty_state.setObjectName("ChatEmpty")
+        self.empty_state.setStyleSheet("background: transparent; border: 0;")
+        empty_outer = QHBoxLayout()
+        empty_outer.addStretch(1)
+        empty_inner = QVBoxLayout(self.empty_state)
+        empty_inner.setContentsMargins(0, 80, 0, 24)
+        empty_inner.setSpacing(28)
+        empty_inner.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        # Hero title (Claude desktop: "What's on your mind?")
+        hero = QLabel("¿En qué puedo ayudarte hoy?", self.empty_state)
+        hero.setObjectName("ChatEmptyTitle")
+        hero.setStyleSheet(
+            "color: #f5f4ee; font-size: 28px; font-weight: 400; "
+            "font-family: 'Newsreader', Georgia, 'Liberation Serif', "
+            "'DejaVu Serif', 'Times New Roman', serif; letter-spacing: -0.02em; "
+            "background: transparent; border: 0;"
+        )
+        hero.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_inner.addWidget(hero)
+        # 2x2 grid of suggestion cards
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        suggestions = [
+            ("benchmark", "Correr benchmark", "10 prompts ES · comparar modelos", "play-circle"),
+            ("config",    "Comparar modelos GGUF", "Gemma, Qwen3, Phi-4…", "package"),
+            ("metrics",   "Medir tokens/s", "RAM, latencia, t/s en vivo", "activity"),
+            ("presets",   "Probar presets", "Coding, Auditoría, Resumen…", "book"),
+        ]
+        for i, (screen, title, sub, icon) in enumerate(suggestions):
+            card = QFrame(self.empty_state)
+            card.setObjectName("SuggestionCard")
+            card.setCursor(Qt.CursorShape.PointingHandCursor)
+            card.setStyleSheet(
+                "QFrame#SuggestionCard { background: #282623; border: 1px solid #34312e; "
+                "border-radius: 10px; }"
+                "QFrame#SuggestionCard:hover { background: #2f2d2a; border-color: #444039; }"
+            )
+            card.setMinimumHeight(110)
+            card_lay = QVBoxLayout(card)
+            card_lay.setContentsMargins(18, 18, 18, 18)
+            card_lay.setSpacing(6)
+            # Icon row
+            ico_row = QHBoxLayout()
+            ico_row.addWidget(svg_label(card, icon, color="#d97757", size=18))
+            ico_row.addStretch(1)
+            card_lay.addLayout(ico_row)
+            # Title (Newsreader serif)
+            t = QLabel(title, card)
+            t.setStyleSheet(
+                "color: #f5f4ee; font-size: 15px; font-weight: 500; "
+                "font-family: 'Newsreader', Georgia, 'Liberation Serif', "
+                "'DejaVu Serif', 'Times New Roman', serif; "
+                "letter-spacing: -0.01em; background: transparent; border: 0;"
+            )
+            card_lay.addWidget(t)
+            # Subtext
+            s = QLabel(sub, card)
+            s.setStyleSheet("color: #a8a499; font-size: 12px; background: transparent; border: 0;")
+            card_lay.addWidget(s)
+            card_lay.addStretch(1)
+            # Wire click: go to that screen
+            card.mousePressEvent = (lambda ev, sc=screen: self._on_suggestion_click(sc))
+            row, col = divmod(i, 2)
+            grid.addWidget(card, row, col)
+        empty_inner.addLayout(grid)
+        empty_outer.addWidget(self.empty_state, 0)
+        empty_outer.addStretch(1)
+        # The empty state is added to root AFTER the scroll (z-order doesn't
+        # matter for QFrame; we just hide the scroll when showing the empty
+        # state, and vice versa).
+        root.addLayout(empty_outer)
+        self.empty_state.show()
+        # Hide the scroll initially (no messages yet)
+        self.scroll.hide()
+
         # --- Composer (also capped at 820px) ---
         composer_outer = QHBoxLayout()
         composer_outer.setContentsMargins(0, 0, 0, 0)
@@ -1850,12 +1978,12 @@ class ChatScreen(QWidget):
         comp = QFrame(composer_wrap)
         comp.setObjectName("Composer")
         comp_lay = QVBoxLayout(comp)
-        comp_lay.setContentsMargins(12, 10, 12, 8)
-        comp_lay.setSpacing(4)
+        comp_lay.setContentsMargins(14, 14, 14, 10)
+        comp_lay.setSpacing(6)
         self._composer_frame = comp
         self.edit = QPlainTextEdit(comp)
         self.edit.setObjectName("ComposerEdit")
-        self.edit.setPlaceholderText("Escribí tu prompt… (Enter para enviar)")
+        self.edit.setPlaceholderText("¿En qué puedo ayudarte hoy?")
         # Auto-grow: min 56, max 200 — set via _on_text_changed
         self.edit.setFixedHeight(56)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -1933,18 +2061,10 @@ class ChatScreen(QWidget):
         composer_outer.addStretch(1)
         root.addLayout(composer_outer)
 
-        # Seed the initial greeting (matches mockup exactly).
-        self._add_message(
-            "ai",
-            self._preset_label("diario"),
-            "<p>¡Hola! Soy <b>ForgeMind Local</b>. Estoy corriendo 100% en tu máquina, sin nube ni claves. "
-            "Puedo ayudarte a:</p>"
-            "<ul><li>Comparar modelos GGUF (Gemma, Qwen3, Phi-4…)</li>"
-            "<li>Medir tokens/s, RAM y latencia real</li>"
-            "<li>Probar 10 prompts en español con el benchmark</li></ul>"
-            "<p>Empezá escribiendo abajo o elegí una sugerencia.</p>",
-            meta={"first_token": "1.2", "tps": "18.4", "chars": "312"},
-        )
+        # Claude desktop style: NO seeded greeting message. The chat opens
+        # with the empty-state hero ("¿En qué puedo ayudarte hoy?") + 4
+        # suggestion cards. The first AI message appears only when the
+        # user actually sends a prompt.
 
     # ---- public API ----
 
@@ -1980,8 +2100,12 @@ class ChatScreen(QWidget):
             w = item.widget()
             if w is not None:
                 w.deleteLater()
+        # Reset to empty state (Claude desktop style hero + suggestions)
+        self._show_empty_state(True)
 
     def add_user_message(self, text: str) -> None:
+        # Hide the empty state on the first user message
+        self._show_empty_state(False)
         self._add_message("user", "Tú", _html_escape(text), meta=None)
 
     def add_streaming_ai_message(self, preset_key: str) -> None:
@@ -2029,6 +2153,19 @@ class ChatScreen(QWidget):
                           f"<p style='color:#d88a83'>[error] {_html_escape(msg)}</p>", meta=None)
 
     # ---- internals ----
+
+    def _on_suggestion_click(self, screen: str) -> None:
+        """When a suggestion card is clicked, go to that screen."""
+        win = self.window()
+        if win is not None and hasattr(win, "_switch_screen"):
+            win._switch_screen(screen)
+
+    def _show_empty_state(self, show: bool) -> None:
+        """Toggle between the empty-state hero and the messages scroll."""
+        if hasattr(self, "empty_state"):
+            self.empty_state.setVisible(show)
+        if hasattr(self, "scroll"):
+            self.scroll.setVisible(not show)
 
     def _preset_label(self, key: str) -> str:
         for p in PRESETS:
@@ -2420,19 +2557,19 @@ class ConfigScreen(QWidget):
     # ---- helpers ----
 
     def _on_slider_changed(self, which: str, v: int) -> None:
-        # Field labels are UPPERCASE per mockup (Qt QSS doesn't support text-transform).
+        # Claude desktop: field labels in Title Case (not UPPERCASE).
         if which == "temp":
             val = f"{v/100:.2f}"
             self.lbl_temp_val.setText(val)
-            self.lbl_temp_field.setText(f"TEMPERATURA  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
+            self.lbl_temp_field.setText(f"Temperatura  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
         elif which == "topp":
             val = f"{v/100:.2f}"
             self.lbl_topp_val.setText(val)
-            self.lbl_topp_field.setText(f"TOP-P  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
+            self.lbl_topp_field.setText(f"Top-p  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
         elif which == "rep":
             val = f"{v/100:.2f}"
             self.lbl_rep_val.setText(val)
-            self.lbl_rep_field.setText(f"REPEAT PENALTY  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
+            self.lbl_rep_field.setText(f"Repeat penalty  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
 
     def log(self, msg: str, *, level: str = "info") -> None:
         """Append a log line. ``level`` is one of: info / ok / warn / err.
@@ -2530,12 +2667,12 @@ class ConfigScreen(QWidget):
 
 
 def _make_field_label(text: str) -> QLabel:
-    # Mockup L1055-1059: field-label uses `text-transform: uppercase`.
-    # Qt QSS does NOT support text-transform, so we uppercase in Python.
-    l = QLabel(text.upper())
+    # Claude desktop: field labels are Title Case (NOT UPPERCASE),
+    # 11.5px, weight 500, color text-3. No letter-spacing.
+    l = QLabel(text)
     l.setStyleSheet(
         "color: #a8a499; font-size: 11.5px; font-weight: 500; "
-        "letter-spacing: 0.06em; background: transparent; border: 0;"
+        "background: transparent; border: 0;"
     )
     return l
 
@@ -3229,18 +3366,32 @@ class MainWindow(QMainWindow):
         self.bread_title = QLabel("Chat", self.header)
         self.bread_title.setObjectName("BreadTitle")
         h_left.addWidget(self.bread_title)
-        self.bread_sep = QLabel("·", self.header)
-        self.bread_sep.setStyleSheet("color: #787469; background: transparent; border: 0;")
-        h_left.addWidget(self.bread_sep)
-        self.bread_sub = QLabel("Streaming on-device · primera respuesta en 1.2s", self.header)
-        self.bread_sub.setObjectName("BreadSub")
-        h_left.addWidget(self.bread_sub)
+        # Claude desktop: NO breadcrumb subtitle, NO "·" separator.
+        # Just the page title in Newsreader serif.
         h_left.addStretch(1)
         h_lay.addLayout(h_left, 1)
 
-        # Header right: chips + cmdk
+        # Header right: "Nuevo chat" button + chips + cmdk (Claude desktop style)
         h_right = QHBoxLayout()
         h_right.setSpacing(6)
+        # "Nuevo chat" button — accent bg, plus icon + label
+        self.btn_header_new_chat = QPushButton(self.header)
+        self.btn_header_new_chat.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_header_new_chat.setStyleSheet(
+            "QPushButton { background: #d97757; color: #1f1e1d; border: 0; "
+            "border-radius: 8px; padding: 0 12px; min-height: 28px; "
+            "font-size: 12.5px; font-weight: 500; }"
+            "QPushButton:hover { background: #c5663f; }"
+        )
+        hnc_lay = QHBoxLayout(self.btn_header_new_chat)
+        hnc_lay.setContentsMargins(0, 0, 0, 0)
+        hnc_lay.setSpacing(6)
+        hnc_lay.addWidget(svg_label(self.btn_header_new_chat, "plus", color="#1f1e1d", size=14))
+        hnc_lbl = QLabel("Nuevo chat", self.btn_header_new_chat)
+        hnc_lbl.setStyleSheet("color: #1f1e1d; font-size: 12.5px; font-weight: 500; background: transparent; border: 0;")
+        hnc_lay.addWidget(hnc_lbl)
+        h_right.addWidget(self.btn_header_new_chat)
+
         self.chip_model = self._make_chip("Gemma 4 12B", accent=True)
         self.chip_backend = self._make_chip("llama-cli", accent=False)
         h_right.addWidget(self.chip_model)
@@ -3461,6 +3612,12 @@ class MainWindow(QMainWindow):
 
     def _wire_header(self) -> None:
         self.btn_cmdk.clicked.connect(self._open_palette)
+        if hasattr(self, "btn_header_new_chat"):
+            self.btn_header_new_chat.clicked.connect(self._on_new_chat)
+        # Wire the user row in the sidebar footer (Claude desktop style:
+        # clicking opens the user/settings menu — for now, just go to config).
+        if hasattr(self.sidebar, "user_row"):
+            self.sidebar.user_row.clicked.connect(lambda: self._switch_screen("config"))
 
     # ---------- keyboard shortcuts ----------
     def eventFilter(self, obj, ev) -> bool:  # noqa: N802
@@ -3551,17 +3708,21 @@ class MainWindow(QMainWindow):
         idx = self.SCREENS.index(screen_id)
         self.stack.setCurrentIndex(idx)
         self.sidebar.set_active(screen_id)
+        # Claude desktop: header shows ONLY the page title in Newsreader serif.
+        # No subtitle, no "·" separator.
         titles = {
-            "chat": ("Chat", "Streaming on-device · primera respuesta en 1.2s"),
-            "config": ("Modelo y backend", "Configuración del GGUF y del runner"),
-            "metrics": ("Rendimiento", "RAM, tokens/s y latencia en vivo"),
-            "benchmark": ("Benchmark", "10 prompts ES · historial y comparativa"),
-            "presets": ("Presets", "Contextos de uso y parámetros sugeridos"),
-            "gpu": ("GPU / Vulkan", "Detección AMD y heurística Vulkan"),
+            "chat": "Chat",
+            "config": "Modelo y backend",
+            "metrics": "Rendimiento",
+            "benchmark": "Benchmark",
+            "presets": "Presets",
+            "gpu": "GPU / Vulkan",
         }
-        t, s = titles.get(screen_id, ("", ""))
-        self.bread_title.setText(t)
-        self.bread_sub.setText(s)
+        self.bread_title.setText(titles.get(screen_id, ""))
+        # Show/hide the "Nuevo chat" button — only on chat screen
+        is_chat = (screen_id == "chat")
+        if hasattr(self, "btn_header_new_chat"):
+            self.btn_header_new_chat.setVisible(is_chat)
         if screen_id == "metrics":
             self.refresh_metrics()
         elif screen_id == "benchmark":
