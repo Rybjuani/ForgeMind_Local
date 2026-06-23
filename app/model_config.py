@@ -68,11 +68,15 @@ class ModelConfig:
     #   "llama_cli"   -> subprocess a llama-cli (recomendado MVP, portable)
     #   "llama_server"-> subprocess a llama-server (HTTP local)
     #   "llama_cpp"   -> binding Python (opcional, requiere build)
+    #   "ollama"      -> daemon Ollama externo via HTTP (no requiere llama.cpp)
     backend_kind: str = "llama_cli"
 
     # Ruta al ejecutable de llama.cpp. Si vacio, lo busca en PATH.
     llama_cli_path: str = ""
     llama_server_path: str = ""
+
+    # URL del daemon Ollama. Solo aplica si backend_kind == "ollama".
+    ollama_url: str = ""
 
     # Extras opcionales
     extra_args: list[str] = field(default_factory=list)

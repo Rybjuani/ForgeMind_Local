@@ -23,11 +23,14 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QProgressBar, QTextEdit, QStatusBar,
 )
 
-from .benchmark import DEFAULT_PROMPTS_FILE, DEFAULT_RESULTS_DIR, run_benchmark, load_prompts
+from .benchmark import (DEFAULT_PROMPTS_FILE, DEFAULT_RESULTS_DIR,
+                       compare_runs, list_runs, load_prompts,
+                       render_compare_markdown, run_benchmark, save_compare)
 from .gpu_detect import system_summary
 from .llama_backend import LlamaBackend
 from .metrics import get_process_metrics, get_system_memory
 from .model_config import ModelConfig
+from .ollama_backend import DEFAULT_OLLAMA_URL, OllamaBackend
 from .presets import PRESETS, get_preset, default_preset
 
 
@@ -94,10 +97,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ForgeMind Local")
         self.resize(1100, 760)
 
-        self.backend = LlamaBackend(ModelConfig())
+        self.backend = self._make_backend(ModelConfig())
         self._chat_history: list[dict[str, str]] = []
         self._current_runner: GenerateRunner | None = None
         self._gen_received_tokens: int = 0
+        self._last_compare: dict[str, Any] = {}
 
         self._build_menu()
         self._build_tabs()
@@ -105,6 +109,20 @@ class MainWindow(QMainWindow):
         self._refresh_gpu_panel()
         self._refresh_metrics_panel()
         self._refresh_backend_panel()
+
+    # ---------- factory ----------
+
+    def _make_backend(self, config: ModelConfig):
+        """Devuelve el backend apropiado segun config.backend_kind.
+
+        No raise: si la clase no existe por algun motivo, cae a LlamaBackend.
+        """
+        try:
+            if config.backend_kind == "ollama":
+                return OllamaBackend(config)
+            return LlamaBackend(config)
+        except Exception:
+            return LlamaBackend(config)
 
     # ---------- menus / acciones ----------
 
@@ -253,6 +271,7 @@ class MainWindow(QMainWindow):
             backend_kind=self.backend.config.backend_kind,
             llama_cli_path=self.backend.config.llama_cli_path,
             llama_server_path=self.backend.config.llama_server_path,
+            ollama_url=getattr(self.backend.config, "ollama_url", "") or self.in_ollama_url.text().strip(),
         )
         return cfg
 
@@ -261,7 +280,7 @@ class MainWindow(QMainWindow):
         # NO destruir el proceso actual sin querer: si esta corriendo, pararlo.
         if self.backend.is_running():
             self.backend.stop()
-        self.backend = LlamaBackend(new_cfg)
+        self.backend = self._make_backend(new_cfg)
         self._refresh_backend_panel()
         self.statusBar().showMessage(f"Config aplicada: {new_cfg.name} ({new_cfg.size_human})", 5000)
 
@@ -280,13 +299,13 @@ class MainWindow(QMainWindow):
         gb_kind = QGroupBox("Tipo de backend")
         f = QFormLayout(gb_kind)
         self.cmb_backend_kind = QComboBox()
-        self.cmb_backend_kind.addItems(["llama_cli", "llama_server", "llama_cpp"])
+        self.cmb_backend_kind.addItems(["llama_cli", "llama_server", "llama_cpp", "ollama"])
         self.cmb_backend_kind.setCurrentText(self.backend.config.backend_kind)
         self.cmb_backend_kind.currentTextChanged.connect(self._on_backend_kind_changed)
         f.addRow("Backend kind:", self.cmb_backend_kind)
         v.addWidget(gb_kind)
 
-        gb_paths = QGroupBox("Rutas a ejecutables de llama.cpp")
+        gb_paths = QGroupBox("Rutas / endpoints")
         f2 = QFormLayout(gb_paths)
         self.in_llama_cli = QLineEdit(self.backend.config.llama_cli_path)
         self.in_llama_cli.setPlaceholderText("(vacio = buscar en PATH)")
@@ -294,6 +313,9 @@ class MainWindow(QMainWindow):
         self.in_llama_server = QLineEdit(self.backend.config.llama_server_path)
         self.in_llama_server.setPlaceholderText("(vacio = buscar en PATH)")
         f2.addRow("llama-server:", self.in_llama_server)
+        self.in_ollama_url = QLineEdit(getattr(self.backend.config, "ollama_url", "") or DEFAULT_OLLAMA_URL)
+        self.in_ollama_url.setPlaceholderText(f"default: {DEFAULT_OLLAMA_URL}")
+        f2.addRow("Ollama URL:", self.in_ollama_url)
         v.addWidget(gb_paths)
 
         row_btns = QHBoxLayout()
@@ -342,6 +364,16 @@ class MainWindow(QMainWindow):
         cfg.backend_kind = kind
         cfg.llama_cli_path = self.in_llama_cli.text().strip()
         cfg.llama_server_path = self.in_llama_server.text().strip()
+        cfg.ollama_url = self.in_ollama_url.text().strip()
+        # Si el kind cambio respecto al backend activo, recreamos para que sea
+        # del tipo correcto (OllamaBackend vs LlamaBackend).
+        if (kind == "ollama" and not isinstance(self.backend, OllamaBackend)) or \
+           (kind != "ollama" and isinstance(self.backend, OllamaBackend)):
+            try:
+                self.backend.stop()
+            except Exception:
+                pass
+            self.backend = self._make_backend(cfg)
         self._refresh_backend_panel()
         self._log(f"backend_kind cambiado a: {kind}")
 
@@ -701,8 +733,47 @@ class MainWindow(QMainWindow):
         vo.addWidget(self.txt_bench_out)
         v.addWidget(gb_out, 1)
 
-        # Carga inicial de prompts para mostrar al usuario
+        # ---- Historial y comparacion entre corridas ----
+        gb_hist = QGroupBox("Historial y comparacion")
+        vh = QVBoxLayout(gb_hist)
+
+        rh = QHBoxLayout()
+        self.btn_runs_refresh = QPushButton("Refrescar lista")
+        self.btn_runs_refresh.clicked.connect(self._reload_runs_list)
+        rh.addWidget(self.btn_runs_refresh)
+        self.btn_runs_compare = QPushButton("Comparar seleccionados")
+        self.btn_runs_compare.clicked.connect(self._on_compare_selected)
+        rh.addWidget(self.btn_runs_compare)
+        self.btn_runs_save = QPushButton("Guardar comparacion")
+        self.btn_runs_save.clicked.connect(self._on_save_compare)
+        self.btn_runs_save.setEnabled(False)
+        rh.addWidget(self.btn_runs_save)
+        rh.addStretch(1)
+        self.lbl_runs_hint = QLabel("Ctrl+click para multi-seleccion")
+        rh.addWidget(self.lbl_runs_hint)
+        vh.addLayout(rh)
+
+        # Splitter vertical: lista de runs a la izquierda, output a la derecha
+        from PyQt6.QtWidgets import QSplitter
+        from PyQt6.QtCore import Qt as _Qt
+        splitter = QSplitter(_Qt.Orientation.Horizontal)
+        self.lst_runs = QListWidget()
+        self.lst_runs.setSelectionMode(self.lst_runs.SelectionMode.ExtendedSelection)
+        self.lst_runs.itemDoubleClicked.connect(self._on_run_double_clicked)
+        splitter.addWidget(self.lst_runs)
+        self.txt_compare = QPlainTextEdit()
+        self.txt_compare.setReadOnly(True)
+        f = QFont("Consolas"); f.setStyleHint(QFont.StyleHint.Monospace)
+        self.txt_compare.setFont(f)
+        splitter.addWidget(self.txt_compare)
+        splitter.setSizes([300, 600])
+        vh.addWidget(splitter, 1)
+
+        v.addWidget(gb_hist, 1)
+
+        # Carga inicial de prompts y runs para mostrar al usuario
         self._reload_prompts_list()
+        self._reload_runs_list()
         return w
 
     def _reload_prompts_list(self) -> None:
@@ -773,6 +844,114 @@ class MainWindow(QMainWindow):
         lines.append(f"Resultados guardados en: {self.in_results_dir.text().strip() or DEFAULT_RESULTS_DIR}")
         self.txt_bench_out.setPlainText("\n".join(lines))
 
+    # ---- Historial y comparacion ----
+
+    def _reload_runs_list(self) -> None:
+        """Carga la lista de runs previos desde la carpeta de resultados."""
+        results_dir = self.in_results_dir.text().strip() or DEFAULT_RESULTS_DIR
+        self.lst_runs.clear()
+        runs = list_runs(results_dir)
+        if not runs:
+            self.lst_runs.addItem("(no hay corridas previas)")
+            return
+        for r in runs:
+            ts_short = (r.get("timestamp") or "").split("T")[-1][:8]  # HH:MM:SS
+            date = (r.get("timestamp") or "").split("T")[0]
+            mock_tag = " [MOCK]" if r.get("mock") else ""
+            label = r.get("label") or "?"
+            model = r.get("model") or "?"
+            quant = r.get("quant") or "?"
+            size = r.get("size_human") or "?"
+            self.lst_runs.addItem(
+                QListWidgetItem(f"{label}  |  {model} ({quant}, {size}){mock_tag}  |  {date} {ts_short}")
+            )
+            # Guardar el path en el item para retrieve despues
+            self.lst_runs.item(self.lst_runs.count() - 1).setData(
+                Qt.ItemDataRole.UserRole, r.get("path")
+            )
+
+    def _on_compare_selected(self) -> None:
+        """Compara los runs seleccionados en la lista."""
+        results_dir = self.in_results_dir.text().strip() or DEFAULT_RESULTS_DIR
+        paths: list[str] = []
+        for i in range(self.lst_runs.count()):
+            it = self.lst_runs.item(i)
+            if it.isSelected():
+                p = it.data(Qt.ItemDataRole.UserRole)
+                if p:
+                    paths.append(p)
+        if len(paths) < 2:
+            QMessageBox.information(
+                self, "Comparar corridas",
+                "Selecciona 2 o mas corridas (Ctrl+click para multi-seleccion)."
+            )
+            return
+        cmp_data = compare_runs(paths)
+        if not cmp_data:
+            self.txt_compare.setPlainText("(no se pudo comparar: archivos invalidos)")
+            self._last_compare = {}
+            self.btn_runs_save.setEnabled(False)
+            return
+        self._last_compare = cmp_data
+        # Render: mostramos el resumen compacto en la UI
+        md = render_compare_markdown(cmp_data)
+        self.txt_compare.setPlainText(md)
+        self.btn_runs_save.setEnabled(True)
+        self.statusBar().showMessage(
+            f"Comparadas {len(cmp_data.get('runs', []))} corridas", 4000
+        )
+
+    def _on_save_compare(self) -> None:
+        """Guarda la ultima comparacion como JSON+MD en la carpeta de resultados."""
+        if not self._last_compare:
+            QMessageBox.information(self, "Guardar comparacion",
+                                    "Primero corré 'Comparar seleccionados'.")
+            return
+        results_dir = self.in_results_dir.text().strip() or DEFAULT_RESULTS_DIR
+        try:
+            jp, mp = save_compare(self._last_compare, results_dir=results_dir)
+        except Exception as e:
+            QMessageBox.warning(self, "Guardar comparacion", f"Error: {e}")
+            return
+        self.statusBar().showMessage(
+            f"Comparacion guardada: {Path(mp).name}", 5000
+        )
+        self._log(f"comparacion guardada en {mp}")
+        # refrescar lista para que aparezca el nuevo run de comparacion
+        self._reload_runs_list()
+
+    def _on_run_double_clicked(self, item) -> None:
+        """Al doble click, muestra el detalle del run en el panel de resumen."""
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if not path:
+            return
+        from .benchmark import load_run
+        run = load_run(path)
+        if not run:
+            return
+        be = run.get("backend") or {}
+        cfg = be.get("config") or {}
+        items = run.get("items") or []
+        lines = [
+            f"Run: {run.get('label')}  ({run.get('timestamp')})",
+            f"Backend: {be.get('backend')}  mock={be.get('mock')}",
+            f"Modelo: {cfg.get('name')}  Cuant: {cfg.get('quant') or '?'}  Tamano: {cfg.get('size_human')}",
+            f"Modo: {cfg.get('mode')}  GPU layers: {cfg.get('gpu_layers')}  Ctx: {cfg.get('ctx_size')}  Threads: {cfg.get('threads')}",
+            f"Wall time: {(run.get('totals') or {}).get('wall_time_sec')} s",
+            f"Prompts corridos: {len(items)}",
+            "",
+            "| # | Titulo | elapsed (s) | t/s (proxy) | chars |",
+            "|---|--------|------------:|------------:|------:|",
+        ]
+        for i, it in enumerate(items, 1):
+            m = it.get("metrics") or {}
+            tps = m.get("tokens_per_sec_proxy")
+            tps_s = f"{tps:.2f}" if isinstance(tps, (int, float)) else "-"
+            lines.append(f"| {i} | {it.get('title')} | {m.get('elapsed_sec')} | {tps_s} | {m.get('char_count')} |")
+        lines.append("")
+        lines.append(f"Path del archivo: {path}")
+        self.txt_bench_out.setPlainText("\n".join(lines))
+
     # ---- acciones de menu: config ----
 
     def _on_save_config(self) -> None:
@@ -784,6 +963,7 @@ class MainWindow(QMainWindow):
         data["backend_kind"] = self.cmb_backend_kind.currentText()
         data["llama_cli_path"] = self.in_llama_cli.text().strip()
         data["llama_server_path"] = self.in_llama_server.text().strip()
+        data["ollama_url"] = self.in_ollama_url.text().strip()
         Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         self._log(f"config guardada en {path}")
         self.statusBar().showMessage(f"Config guardada: {path}", 4000)
@@ -811,6 +991,7 @@ class MainWindow(QMainWindow):
         self.cmb_backend_kind.setCurrentText(str(data.get("backend_kind", "llama_cli")))
         self.in_llama_cli.setText(str(data.get("llama_cli_path", "")))
         self.in_llama_server.setText(str(data.get("llama_server_path", "")))
+        self.in_ollama_url.setText(str(data.get("ollama_url", "")))
         self._refresh_model_info()
         self._log(f"config cargada de {path}")
         self.statusBar().showMessage(f"Config cargada: {path}", 4000)

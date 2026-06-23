@@ -55,6 +55,18 @@ Pestana `Benchmark`:
 - Guarda `benchmarks/results/<label>-<timestamp>.json` y `.md`.
 - No inventa numeros: si algo no se pudo medir, queda como `null` + nota.
 
+## Historial y comparativa
+
+En la misma pestana `Benchmark`, seccion inferior "Historial y comparacion":
+- `Refrescar lista` lee todos los JSON en la carpeta de resultados.
+- Cada item muestra: label, modelo, cuant, tamano, fecha, hora.
+- Ctrl+click para multi-seleccionar 2 o mas corridas (incluso de modelos distintos).
+- `Comparar seleccionados` genera tabla lado a lado: por prompt y resumen general (wall time, t/s prom, etc.).
+- `Guardar comparacion` persiste el resultado como `compare-<timestamp>.{json,md}` en la misma carpeta.
+- Doble-click en una corrida muestra detalle completo en el panel "Resumen ultima corrida".
+
+Util para responder la pregunta clave: "cual modelo conviene para mi PC?" sin tener que correr los benchmarks lado a lado a ojo.
+
 ## Estructura
 
 ```
