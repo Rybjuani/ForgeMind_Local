@@ -1,0 +1,2896 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ForgeMind Local — Desktop UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  // Anti-FOUC: sidebar collapse persistence (theme is dark-only here)
+  (function () {
+    try {
+      if (localStorage.getItem('forgemind-sidebar') === 'collapsed') {
+        document.documentElement.classList.add('sidebar-collapsed');
+      }
+    } catch (e) {}
+  })();
+</script>
+<style>
+/* ============================================================
+   ForgeMind Local — Claude desktop visual DNA (dark only)
+   Sidebar + chat-centric layout · floating composer
+   Premium micro-interactions · command palette · metrics overlay
+   ============================================================ */
+:root {
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-2xl: 24px;
+  --r-pill: 999px;
+
+  --t-fast: 110ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t:      180ms cubic-bezier(0.32, 0.72, 0.24, 1);
+  --t-slow: 280ms cubic-bezier(0.32, 0.72, 0.24, 1);
+  --t-spring: 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font-sans:  "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Newsreader", "Tiempos Text", Georgia, "Times New Roman", serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --sidebar-w: 260px;
+  --sidebar-w-collapsed: 60px;
+  --header-h: 52px;
+  --titlebar-h: 38px;
+
+  color-scheme: dark;
+}
+
+/* ============ DARK THEME (only) ============ */
+:root, :root[data-theme="dark"] {
+  --bg:           #1a1918;
+  --bg-sidebar:   #211f1d;
+  --bg-titlebar:  #181715;
+  --surface:      #282623;
+  --surface-2:    #2f2d2a;
+  --surface-3:    #383531;
+  --surface-sunk: #151413;
+  --surface-overlay: rgba(40, 38, 35, 0.88);
+
+  --text:         #f5f4ee;
+  --text-2:       #d8d4c8;
+  --text-3:       #a8a499;
+  --text-4:       #787469;
+
+  --border:       #34312e;
+  --border-2:     #444039;
+  --border-strong:#564f47;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.36), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.40), 0 2px 4px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.48), 0 4px 10px rgba(0, 0, 0, 0.32);
+  --shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.56), 0 8px 20px rgba(0, 0, 0, 0.36);
+  --shadow-glow: 0 0 0 3px rgba(217, 119, 87, 0.18);
+
+  --accent:        #d97757;
+  --accent-hover:  #c5663f;
+  --accent-active: #b1582e;
+  --accent-soft:   rgba(217, 119, 87, 0.14);
+  --accent-line:   rgba(217, 119, 87, 0.34);
+  --accent-ink:    #1f1e1d;
+
+  --green:        #8ab589;
+  --green-soft:   rgba(138, 181, 137, 0.14);
+  --green-line:   rgba(138, 181, 137, 0.32);
+  --amber:        #d4a361;
+  --amber-soft:   rgba(212, 163, 97, 0.14);
+  --amber-line:   rgba(212, 163, 97, 0.32);
+  --blue:         #88a7c4;
+  --blue-soft:    rgba(136, 167, 196, 0.14);
+  --blue-line:    rgba(136, 167, 196, 0.32);
+  --rose:         #d88a83;
+  --rose-soft:    rgba(216, 138, 131, 0.14);
+
+  --focus: rgba(217, 119, 87, 0.42);
+  --hover-overlay: rgba(255, 255, 255, 0.045);
+  --hover-overlay-strong: rgba(255, 255, 255, 0.075);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.55;
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+button, input, textarea, select { font-family: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: none; padding: 0; }
+::selection { background: var(--accent-soft); color: var(--text); }
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus); border-radius: var(--r-sm); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; border: 3px solid transparent; }
+
+/* ============================================================
+   Desktop window frame (fake titlebar like Electron/Tauri)
+   ============================================================ */
+.window {
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: var(--titlebar-h) 1fr;
+  overflow: hidden;
+}
+.titlebar {
+  background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 10px;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.titlebar-left, .titlebar-right { display: flex; align-items: center; gap: 6px; }
+.titlebar-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: -0.005em;
+}
+.titlebar-brand .mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, #d97757, #c15f3c);
+  display: grid;
+  place-items: center;
+  color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+}
+.titlebar-brand .mark svg { width: 11px; height: 11px; }
+.win-btn {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  position: relative;
+  transition: filter var(--t-fast);
+}
+.win-btn:hover { filter: brightness(1.15); }
+.win-btn.close { background: #ff5f57; }
+.win-btn.min   { background: #febc2e; }
+.win-btn.max   { background: #28c840; }
+
+/* ============================================================
+   App body: sidebar + main
+   ============================================================ */
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  transition: grid-template-columns var(--t-slow);
+  overflow: hidden;
+  min-height: 0;
+}
+.sidebar-collapsed .app { grid-template-columns: var(--sidebar-w-collapsed) 1fr; }
+
+/* ============ Sidebar ============ */
+aside {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-top {
+  height: 48px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.sidebar-collapsed .sidebar-top { padding: 0; justify-content: center; }
+
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+.sidebar-collapsed .brand { display: none; }
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #d97757, #c15f3c);
+  display: grid;
+  place-items: center;
+  color: var(--accent-ink);
+  flex: none;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.18);
+  position: relative;
+}
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.15), transparent 60%);
+  pointer-events: none;
+}
+.brand-mark svg { width: 15px; height: 15px; position: relative; z-index: 1; }
+.brand-name {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.brand-tag {
+  font-size: 10.5px;
+  color: var(--text-4);
+  display: block;
+  margin-top: 1px;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  transition: background var(--t-fast), color var(--t-fast);
+  flex: none;
+  position: relative;
+  overflow: hidden;
+}
+.icon-btn:hover { background: var(--hover-overlay); color: var(--text); }
+.icon-btn:active { transform: scale(0.94); }
+.icon-btn svg { width: 16px; height: 16px; }
+.sidebar-collapsed .collapse-btn { display: none; }
+.collapse-btn { margin-left: auto; }
+.sidebar-collapsed .expand-btn { display: grid !important; }
+.expand-btn { display: none; }
+
+/* Model status card — the active model summary */
+.model-card {
+  margin: 6px 10px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.model-card:hover { border-color: var(--border-2); background: var(--surface-2); }
+.sidebar-collapsed .model-card { display: none; }
+.mc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  min-width: 0;
+}
+.mc-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mc-name {
+  font-family: var(--font-serif);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mc-meta {
+  font-size: 11.5px;
+  color: var(--text-3);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mc-meta b { color: var(--text-2); font-weight: 500; font-feature-settings: "tnum"; }
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--green-soft);
+  color: var(--green);
+  border: 1px solid var(--green-line);
+  border-radius: var(--r-pill);
+  padding: 2px 8px 2px 7px;
+  font-size: 10.5px;
+  font-weight: 500;
+  width: max-content;
+}
+.status-pill.idle {
+  background: var(--surface-sunk);
+  color: var(--text-3);
+  border-color: var(--border-2);
+}
+.status-pill.idle .status-dot { background: var(--text-4); }
+.status-pill.idle .status-dot::after { display: none; }
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex: none;
+  position: relative;
+}
+.status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: var(--green);
+  opacity: 0.35;
+  animation: pulse 2.4s ease-out infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(0.6); opacity: 0.45; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Sidebar body */
+.sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-body::-webkit-scrollbar { width: 6px; }
+
+.new-chat-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 11px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+  margin-bottom: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.new-chat-btn:hover { background: var(--surface-3); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.new-chat-btn:active { transform: translateY(1px); }
+.new-chat-btn svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.sidebar-collapsed .new-chat-btn { padding: 8px; justify-content: center; }
+.sidebar-collapsed .new-chat-btn span { display: none; }
+
+nav { display: grid; gap: 1px; min-width: 0; margin-top: 4px; }
+.nav-btn {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 450;
+  color: var(--text-2);
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+  min-width: 0;
+  letter-spacing: -0.005em;
+  position: relative;
+}
+.nav-btn:hover { background: var(--hover-overlay); color: var(--text); }
+.nav-btn.active {
+  background: var(--hover-overlay-strong);
+  color: var(--text);
+  font-weight: 500;
+}
+.nav-btn::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 3px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+  transition: transform var(--t-spring);
+}
+.nav-btn.active::before { transform: translateY(-50%) scaleY(1); }
+.nav-btn .ico {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  transition: color var(--t-fast);
+}
+.nav-btn:hover .ico { color: var(--text-2); }
+.nav-btn.active .ico { color: var(--accent); }
+.nav-btn .ico svg { width: 17px; height: 17px; }
+.nav-btn .label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-btn .kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-4);
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: 1px 5px;
+  flex: none;
+}
+.sidebar-collapsed .nav-btn { justify-content: center; padding: 10px 0; }
+.sidebar-collapsed .nav-btn .label,
+.sidebar-collapsed .nav-btn .kbd { display: none; }
+.sidebar-collapsed .nav-btn::before { left: 0; }
+
+/* Sidebar footer */
+.sidebar-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+.foot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.foot-row b { color: var(--text-2); font-weight: 500; font-feature-settings: "tnum"; }
+.foot-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex: none;
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.sidebar-collapsed .foot-row { justify-content: center; padding: 8px; }
+.sidebar-collapsed .foot-row span:not(.foot-dot) { display: none; }
+
+/* User identity row (Claude-style sidebar footer) */
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background var(--t-fast), color var(--t-fast);
+  margin-bottom: 6px;
+  text-align: left;
+}
+.user-row:hover { background: var(--hover-overlay); color: var(--text); }
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-active));
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+  letter-spacing: 0.02em;
+}
+.user-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-chevron { color: var(--text-4); flex: none; display: grid; place-items: center; }
+.user-chevron svg { width: 14px; height: 14px; }
+.sidebar-collapsed .user-row { justify-content: center; padding: 8px; }
+.sidebar-collapsed .user-name,
+.sidebar-collapsed .user-chevron { display: none; }
+
+/* ============================================================
+   Main area
+   ============================================================ */
+.main-wrap {
+  display: grid;
+  grid-template-rows: var(--header-h) 1fr;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  min-width: 0;
+  z-index: 5;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.mobile-menu-btn { display: none; }
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.breadcrumb-title {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.breadcrumb-sub {
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.breadcrumb-divider {
+  color: var(--text-4);
+  font-size: 12px;
+}
+.header-right {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex: none;
+}
+.chip {
+  height: 24px;
+  border: 1px solid var(--border-2);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: var(--r-pill);
+  padding: 0 9px 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.chip:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.chip.accent {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.chip.accent .chip-dot { background: var(--accent); }
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex: none;
+}
+.header-new-chat {
+  height: 28px;
+  padding: 0 11px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  border-radius: var(--r-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+  transition: background var(--t-fast), transform var(--t-fast);
+  white-space: nowrap;
+}
+.header-new-chat:hover { background: var(--accent-hover); }
+.header-new-chat:active { transform: scale(0.97); }
+.header-new-chat svg { width: 13px; height: 13px; }
+
+.content {
+  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.screen { display: none; }
+.screen.active { display: block; animation: rise 220ms cubic-bezier(0.32, 0.72, 0.24, 1); }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ============================================================
+   CHAT (main screen) — Claude desktop signature
+   ============================================================ */
+.chat-wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 24px 24px 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+}
+.messages {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 8px 4px 16px;
+  min-height: 0;
+  scroll-behavior: smooth;
+}
+.msg {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  animation: msgIn 320ms cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.msg.user .msg-avatar {
+  background: var(--surface-3);
+  color: var(--text-2);
+  border: 1px solid var(--border-2);
+}
+.msg.ai .msg-avatar {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+}
+.msg-avatar svg { width: 15px; height: 15px; }
+.msg-content {
+  min-width: 0;
+  flex: 1;
+  padding-top: 2px;
+}
+.msg-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 4px;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.msg-preset {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  padding: 1px 7px;
+}
+.msg-body {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--text);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.msg-body p { margin: 0 0 10px; }
+.msg-body p:last-child { margin-bottom: 0; }
+.msg-body code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--surface-sunk);
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.msg-body pre {
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+.msg-body pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.msg-body ol, .msg-body ul { padding-left: 22px; margin: 8px 0; }
+.msg-body li { margin-bottom: 4px; }
+.msg-body strong { color: var(--text); font-weight: 600; }
+.msg-meta {
+  margin-top: 8px;
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+}
+.msg-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+.msg:hover .msg-actions { opacity: 1; }
+.msg-action {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-xs);
+  color: var(--text-4);
+  display: grid;
+  place-items: center;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.msg-action:hover { background: var(--hover-overlay); color: var(--text-2); }
+.msg-action svg { width: 13px; height: 13px; }
+
+.typing { display: flex; gap: 4px; padding: 4px 0; }
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  animation: typing 1.4s ease-in-out infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Composer — floating, Claude desktop style */
+.composer-wrap {
+  padding: 8px 24px 16px;
+  background: linear-gradient(180deg, transparent, var(--bg) 30%);
+  position: relative;
+}
+.composer {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-xl);
+  padding: 14px 14px 10px;
+  box-shadow: var(--shadow-lg);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  position: relative;
+}
+.composer:focus-within {
+  border-color: var(--accent-line);
+  box-shadow: var(--shadow-lg), 0 0 0 3px var(--accent-soft);
+}
+.composer textarea {
+  width: 100%;
+  min-height: 24px;
+  max-height: 200px;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 4px 6px 6px;
+  outline: none;
+  font-size: 15px;
+  line-height: 1.55;
+  font-family: inherit;
+  caret-color: var(--accent);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  display: block;
+}
+.composer textarea::placeholder { color: var(--text-4); }
+.composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}
+.composer-tools {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.tool-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  transition: background var(--t-fast), color var(--t-fast);
+  position: relative;
+  overflow: hidden;
+}
+.tool-btn:hover { background: var(--hover-overlay); color: var(--text); }
+.tool-btn svg { width: 15px; height: 15px; }
+.tool-btn .tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-fast), transform var(--t-fast);
+  font-weight: 500;
+}
+.tool-btn:hover .tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Preset selector — pill button inside composer */
+.preset-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px 5px 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.preset-pill:hover { background: var(--hover-overlay); color: var(--text); border-color: var(--border-2); }
+.preset-pill .preset-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.preset-pill svg { width: 12px; height: 12px; color: var(--text-4); }
+
+.composer-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.send-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  transition: background var(--t-fast), opacity var(--t-fast), transform var(--t-fast);
+  flex: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+  position: relative;
+  overflow: hidden;
+}
+.send-btn:hover { background: var(--accent-hover); }
+.send-btn:active { transform: scale(0.92); }
+.send-btn:disabled { background: var(--border-strong); cursor: not-allowed; }
+.send-btn svg { width: 15px; height: 15px; }
+.composer-hint {
+  font-size: 11px;
+  color: var(--text-4);
+  margin-top: 8px;
+  text-align: center;
+}
+.composer-hint kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  padding: 0 4px;
+  color: var(--text-2);
+  margin: 0 1px;
+}
+
+/* Chat empty state hero (Claude desktop signature) */
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 32px 24px 24px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.chat-empty[hidden] { display: none; }
+.messages[hidden] { display: none; }
+.chat-empty-title {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-align: center;
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* Empty state suggestions */
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 640px;
+}
+.suggestion-card {
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 18px;
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast), transform var(--t-fast);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  min-height: 120px;
+}
+.suggestion-card:hover {
+  border-color: var(--accent-line);
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+.suggestion-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid var(--accent-line);
+}
+.suggestion-icon svg { width: 15px; height: 15px; }
+.suggestion-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.suggestion-title {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.suggestion-desc {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+}
+
+/* ============================================================
+   Generic screen layout (config, metrics, benchmark)
+   ============================================================ */
+.screen-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 32px 48px;
+}
+.screen-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  min-width: 0;
+  transition: border-color var(--t-fast);
+}
+.card:hover { border-color: var(--border-2); }
+.card h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card h3 .h3-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+.card h3 .h3-icon svg { width: 17px; height: 17px; }
+.card p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.card p + p { margin-top: 8px; }
+.card code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface-sunk);
+  padding: 1.5px 5px;
+  border-radius: var(--r-xs);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.card-desc { color: var(--text-3); font-size: 12.5px; margin: 0 0 14px 26px; }
+
+/* Form fields */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px 16px;
+}
+.form-grid .span-2 { grid-column: 1 / -1; }
+.field { display: grid; gap: 5px; }
+.field-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: 0;
+}
+.field-input, .field-select, .field-textarea {
+  width: 100%;
+  border: 1px solid var(--border-2);
+  background: var(--surface-sunk);
+  color: var(--text);
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
+}
+.field-input:focus, .field-select:focus, .field-textarea:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--surface);
+}
+.field-input.with-button { padding-right: 80px; }
+.field-with-btn {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+.field-hint {
+  font-size: 11px;
+  color: var(--text-4);
+  font-family: var(--font-mono);
+}
+
+/* Slider field */
+.slider-field {
+  display: grid;
+  gap: 6px;
+}
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.slider-row input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--surface-sunk);
+  border-radius: 99px;
+  outline: none;
+}
+.slider-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm), 0 0 0 4px var(--accent-soft);
+  transition: transform var(--t-fast);
+}
+.slider-row input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.slider-value {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  font-feature-settings: "tnum";
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: 2px 8px;
+  min-width: 60px;
+  text-align: center;
+}
+
+/* Buttons */
+.btn {
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  position: relative;
+}
+.btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.btn:active { transform: translateY(1px); }
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+.btn.primary:hover { background: var(--accent-hover); box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.18); }
+.btn.primary:active { background: var(--accent-active); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn.ghost:hover { background: var(--hover-overlay); color: var(--text); }
+.btn.danger { color: var(--rose); border-color: var(--rose-soft); }
+.btn.danger:hover { background: var(--rose-soft); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn svg { width: 14px; height: 14px; }
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Ripple */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+  transform: scale(0);
+  animation: ripple-anim 600ms ease-out;
+}
+.btn.primary .ripple, .icon-btn .ripple, .send-btn .ripple { background: rgba(255, 255, 255, 0.4); }
+.btn:not(.primary) .ripple { background: rgba(255, 255, 255, 0.18); }
+@keyframes ripple-anim {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* KV list */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  min-width: 0;
+  align-items: center;
+}
+.kv:last-child { border-bottom: 0; }
+.kv .k {
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.kv .v {
+  color: var(--text);
+  font-weight: 500;
+  text-align: right;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  flex: 1;
+  min-width: 0;
+  font-feature-settings: "tnum";
+  font-size: 13px;
+}
+.kv .v.accent { color: var(--accent); }
+.kv .v.green  { color: var(--green); }
+.kv .v.amber  { color: var(--amber); }
+
+/* Metric tiles */
+.metric-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto 1fr;
+  transition: border-color var(--t-fast), transform var(--t-fast);
+}
+.metric-tile:hover { border-color: var(--border-2); transform: translateY(-1px); }
+.metric-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 8px;
+}
+.metric-label {
+  color: var(--text-4);
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.metric-value {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-feature-settings: "tnum";
+  line-height: 1;
+}
+.metric-value .unit {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-left: 3px;
+  font-weight: 400;
+}
+.bar {
+  height: 5px;
+  border-radius: 99px;
+  background: var(--surface-sunk);
+  overflow: hidden;
+  position: relative;
+}
+.bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 2.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  60%, 100% { transform: translateX(100%); }
+}
+.fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  width: var(--w, 0%);
+  transition: width 0.8s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+.fill.green { background: linear-gradient(90deg, var(--green), color-mix(in srgb, var(--green), white 15%)); }
+.fill.blue { background: linear-gradient(90deg, var(--blue), color-mix(in srgb, var(--blue), white 15%)); }
+.fill.amber { background: linear-gradient(90deg, var(--amber), color-mix(in srgb, var(--amber), white 15%)); }
+.metric-tile p { font-size: 11.5px; color: var(--text-3); margin: 4px 0 0; line-height: 1.45; }
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+/* Code block */
+.code-block {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--surface-sunk);
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  line-height: 1.8;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Log console */
+.log-console {
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-3);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+.log-line { display: flex; gap: 8px; }
+.log-ts { color: var(--text-4); flex: none; }
+.log-msg { color: var(--text-2); }
+.log-line.ok .log-msg { color: var(--green); }
+.log-line.err .log-msg { color: var(--rose); }
+.log-line.warn .log-msg { color: var(--amber); }
+
+/* Run list (benchmark history) */
+.runs-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 14px;
+  min-height: 360px;
+}
+.runs-list {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.runs-list-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.runs-list-body { overflow-y: auto; flex: 1; }
+.run-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--t-fast);
+  display: grid;
+  gap: 3px;
+}
+.run-item:last-child { border-bottom: 0; }
+.run-item:hover { background: var(--hover-overlay); }
+.run-item.selected { background: var(--accent-soft); border-left: 3px solid var(--accent); padding-left: 9px; }
+.run-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.run-item-meta {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-feature-settings: "tnum";
+}
+.run-item-meta b { color: var(--text-2); font-weight: 500; }
+.run-detail {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: 18px;
+  overflow: auto;
+}
+.run-detail h4 {
+  margin: 0 0 12px;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.compare-table th, .compare-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.compare-table th {
+  font-weight: 600;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.compare-table td.num { font-family: var(--font-mono); font-feature-settings: "tnum"; text-align: right; }
+.compare-table tr:hover td { background: var(--hover-overlay); }
+.compare-table .winner { color: var(--green); font-weight: 600; }
+
+/* Preset grid (settings screen) */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.preset-card {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.preset-card:hover { border-color: var(--border-2); background: var(--surface-2); }
+.preset-card.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.preset-card-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preset-card-desc {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.preset-card-params {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+.preset-card-params span {
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+}
+
+/* GPU/Vulkan summary */
+.gpu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.gpu-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+}
+.gpu-tile-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+.gpu-tile-value {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--text);
+}
+.gpu-tile-sub {
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+/* ============================================================
+   Command palette (Ctrl+K)
+   ============================================================ */
+.cmdk-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t);
+  z-index: 100;
+}
+.cmdk-backdrop.open { opacity: 1; pointer-events: auto; }
+.cmdk {
+  position: fixed;
+  top: 14vh;
+  left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  width: min(560px, 92vw);
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-xl);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t), transform var(--t);
+  z-index: 101;
+  overflow: hidden;
+}
+.cmdk.open { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+.cmdk-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.cmdk-input-wrap svg { width: 17px; height: 17px; color: var(--text-3); flex: none; }
+.cmdk-input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+  font-family: inherit;
+}
+.cmdk-input::placeholder { color: var(--text-4); }
+.cmdk-esc {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-4);
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
+}
+.cmdk-list {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.cmdk-section {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 12px 4px;
+}
+.cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-size: 13.5px;
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.cmdk-item:hover, .cmdk-item.selected {
+  background: var(--hover-overlay-strong);
+  color: var(--text);
+}
+.cmdk-item .ico {
+  width: 18px;
+  height: 18px;
+  color: var(--text-3);
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.cmdk-item:hover .ico, .cmdk-item.selected .ico { color: var(--accent); }
+.cmdk-item .ico svg { width: 17px; height: 17px; }
+.cmdk-item .label { flex: 1; min-width: 0; }
+.cmdk-item .kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-4);
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: 1px 5px;
+}
+.cmdk-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-4);
+}
+.cmdk-footer .hint { display: flex; gap: 12px; }
+.cmdk-footer kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  padding: 0 5px;
+  color: var(--text-2);
+}
+
+/* ============================================================
+   Toast
+   ============================================================ */
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  padding: 10px 14px 10px 12px;
+  font-weight: 500;
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(16px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t), transform var(--t);
+  z-index: 90;
+  max-width: 80%;
+  word-break: break-word;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.toast.show { transform: none; opacity: 1; }
+.toast-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--green);
+  color: var(--surface-2);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.toast-icon svg { width: 11px; height: 11px; }
+
+/* ============================================================
+   Mobile
+   ============================================================ */
+.mobile-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t);
+  z-index: 50;
+}
+.mobile-backdrop.open { opacity: 1; pointer-events: auto; }
+
+@media (max-width: 980px) {
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
+  .gpu-grid { grid-template-columns: 1fr; }
+  .preset-grid { grid-template-columns: 1fr; }
+  .runs-grid { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .screen-wrap { padding: 20px; }
+  .suggestions { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .app { grid-template-columns: 1fr; }
+  aside {
+    position: fixed;
+    top: var(--titlebar-h);
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-w);
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform var(--t-slow);
+    box-shadow: var(--shadow-xl);
+  }
+  aside.open { transform: translateX(0); }
+  .sidebar-collapsed aside { width: var(--sidebar-w); }
+  .sidebar-collapsed .brand,
+  .sidebar-collapsed .new-chat-btn span,
+  .sidebar-collapsed .nav-btn .label,
+  .sidebar-collapsed .model-card,
+  .sidebar-collapsed .foot-row span:not(.foot-dot),
+  .sidebar-collapsed .user-name,
+  .sidebar-collapsed .user-chevron { display: revert; }
+  .sidebar-collapsed .new-chat-btn { padding: 8px 11px; justify-content: flex-start; }
+  .sidebar-collapsed .nav-btn { justify-content: flex-start; padding: 7px 10px; }
+  .mobile-menu-btn { display: grid; }
+  .mobile-backdrop { display: block; }
+  .collapse-btn, .expand-btn { display: none !important; }
+  .chat-wrap { padding: 16px 16px 0; }
+  .composer-wrap { padding: 8px 16px 16px; }
+  .breadcrumb-sub { display: none; }
+  .titlebar-center { display: none; }
+}
+@media (max-width: 480px) {
+  .metric-grid { grid-template-columns: 1fr; }
+  .header-right .chip:not(.accent) { display: none; }
+  .suggestions { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="window">
+
+  <!-- ============ TITLEBAR (desktop window chrome) ============ -->
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <div class="titlebar-brand">
+        <div class="mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l2 2 4-4"/></svg>
+        </div>
+        ForgeMind Local
+      </div>
+    </div>
+    <div class="titlebar-center">
+      <span id="titlebarModel">Gemma 4 12B · Q4_K_M · 7.4 GB</span>
+      <span style="color:var(--text-4)">·</span>
+      <span style="color:var(--green)">●</span>
+      <span>llama-cli activo</span>
+    </div>
+    <div class="titlebar-right">
+      <button class="win-btn min" aria-label="Minimizar"></button>
+      <button class="win-btn max" aria-label="Maximizar"></button>
+      <button class="win-btn close" aria-label="Cerrar"></button>
+    </div>
+  </div>
+
+  <!-- ============ APP BODY ============ -->
+  <div class="app" id="app">
+
+    <!-- ============ SIDEBAR ============ -->
+    <aside id="sidebar">
+      <div class="sidebar-top">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l2 2 4-4"/></svg>
+          </div>
+          <div>
+            <div class="brand-name">ForgeMind</div>
+            <span class="brand-tag">Local LLM lab</span>
+          </div>
+        </div>
+        <button class="icon-btn collapse-btn" id="collapseBtn" aria-label="Colapsar sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button class="icon-btn expand-btn" id="expandBtn" aria-label="Expandir sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+
+      <!-- Active model card (click → go to config) -->
+      <div class="model-card" id="modelCard" data-jump="config">
+        <div class="mc-row">
+          <span class="status-pill"><span class="status-dot"></span> Activo</span>
+        </div>
+        <div class="mc-name">Gemma 4 12B</div>
+        <div class="mc-meta">
+          <span>Q4_K_M</span>
+          <span>·</span>
+          <span><b>7.4</b> GB</span>
+          <span>·</span>
+          <span><b>4096</b> ctx</span>
+        </div>
+      </div>
+
+      <div class="sidebar-body">
+        <button class="new-chat-btn" id="newChatBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Nueva conversación</span>
+        </button>
+
+        <nav id="nav" aria-label="Pantallas">
+            <button class="nav-btn active" data-screen="chat">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
+              <span class="label">Chat</span>
+              <span class="kbd">G C</span>
+            </button>
+            <button class="nav-btn" data-screen="config">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+              <span class="label">Modelo y backend</span>
+              <span class="kbd">G M</span>
+            </button>
+            <button class="nav-btn" data-screen="metrics">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+              <span class="label">Rendimiento</span>
+              <span class="kbd">G P</span>
+            </button>
+            <button class="nav-btn" data-screen="benchmark">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg></span>
+              <span class="label">Benchmark</span>
+              <span class="kbd">G B</span>
+            </button>
+            <button class="nav-btn" data-screen="presets">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+              <span class="label">Presets</span>
+              <span class="kbd">G R</span>
+            </button>
+            <button class="nav-btn" data-screen="gpu">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10v4M10 10v4M14 10v4M18 10v4"/></svg></span>
+              <span class="label">GPU / Vulkan</span>
+              <span class="kbd">G G</span>
+            </button>
+          </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="user-row" id="userRow">
+          <span class="user-avatar">FM</span>
+          <span class="user-name">ForgeMind User</span>
+          <span class="user-chevron">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+          </span>
+        </button>
+        <div class="foot-row">
+          <span class="foot-dot"></span>
+          <span>RAM <b>1.04</b> / 16 GB · <b>18.4</b> t/s</span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="mobile-backdrop" id="mobileBackdrop"></div>
+
+    <!-- ============ MAIN ============ -->
+    <div class="main-wrap">
+      <header>
+        <div class="header-left">
+          <button class="icon-btn mobile-menu-btn" id="mobileMenuBtn" aria-label="Abrir menú">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <div class="breadcrumb">
+            <span class="breadcrumb-title" id="pageTitle">Chat</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="header-new-chat" id="headerNewChat" aria-label="Nuevo chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nuevo chat
+          </button>
+          <div class="chip accent"><span class="chip-dot"></span> Gemma 4 12B</div>
+          <div class="chip">llama-cli</div>
+          <button class="icon-btn" id="cmdkBtn" aria-label="Paleta de comandos" title="Paleta de comandos (Ctrl+K)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="content">
+
+        <!-- ============ CHAT (default screen) ============ -->
+        <section class="screen active" id="chat">
+          <div class="chat-wrap">
+            <div class="chat-empty" id="chatEmpty">
+              <h2 class="chat-empty-title">¿En qué puedo ayudarte hoy?</h2>
+              <div class="suggestions">
+                <button class="suggestion-card" data-suggestion="Comparar modelos GGUF: RAM, velocidad y calidad de cada cuantización">
+                  <span class="suggestion-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg></span>
+                  <span class="suggestion-body">
+                    <span class="suggestion-title">Comparar modelos GGUF</span>
+                    <span class="suggestion-desc">RAM, velocidad y calidad de cada cuantización.</span>
+                  </span>
+                </button>
+                <button class="suggestion-card" data-suggestion="Correr el benchmark con 10 prompts en español">
+                  <span class="suggestion-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
+                  <span class="suggestion-body">
+                    <span class="suggestion-title">Correr benchmark</span>
+                    <span class="suggestion-desc">10 prompts ES con métricas reproducibles.</span>
+                  </span>
+                </button>
+                <button class="suggestion-card" data-suggestion="Medir tokens/s y latencia real del modelo activo">
+                  <span class="suggestion-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+                  <span class="suggestion-body">
+                    <span class="suggestion-title">Medir tokens/s</span>
+                    <span class="suggestion-desc">Tasa de generación en tiempo real.</span>
+                  </span>
+                </button>
+                <button class="suggestion-card" data-suggestion="Probar presets y comparar su efecto en las respuestas">
+                  <span class="suggestion-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+                  <span class="suggestion-body">
+                    <span class="suggestion-title">Probar presets</span>
+                    <span class="suggestion-desc">Contextos optimizados para cada tarea.</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div class="messages" id="messages" hidden></div>
+
+            <div class="composer-wrap">
+              <div class="composer" id="composer">
+                <textarea id="prompt" placeholder="Escribí tu prompt… (Enter para enviar)" rows="1"></textarea>
+                <div class="composer-bar">
+                  <div class="composer-tools">
+                    <button class="preset-pill" id="presetPill" title="Cambiar preset">
+                      <span class="preset-dot"></span>
+                      <span id="presetName">Diario</span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                  </div>
+                  <div class="composer-right">
+                    <button class="tool-btn" id="attachBtn" title="Adjuntar archivo">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                      <span class="tip">Adjuntar</span>
+                    </button>
+                    <button class="tool-btn" id="toolsBtn" title="Herramientas">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                      <span class="tip">Herramientas</span>
+                    </button>
+                    <button class="tool-btn" id="clearBtn" title="Limpiar conversación">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      <span class="tip">Limpiar</span>
+                    </button>
+                    <button class="send-btn" id="sendBtn" type="button" aria-label="Enviar" disabled>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="composer-hint">
+                <kbd>Enter</kbd> enviar · <kbd>Shift</kbd>+<kbd>Enter</kbd> nueva línea · <kbd>Ctrl</kbd>+<kbd>K</kbd> comandos
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ CONFIG (Modelo + Backend merged) ============ -->
+        <section class="screen" id="config">
+          <div class="screen-wrap">
+            <div class="screen-grid">
+
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span>
+                  Modelo GGUF
+                </h3>
+                <p class="card-desc">Seleccioná el archivo .gguf y los parámetros de inferencia.</p>
+                <div class="form-grid">
+                  <div class="field span-2">
+                    <label class="field-label">Archivo .gguf</label>
+                    <div class="field-with-btn">
+                      <input class="field-input" id="ggufPath" value="C:\modelos\gemma-4-12b.Q4_K_M.gguf" />
+                      <button class="btn" id="pickGguf">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        Elegir
+                      </button>
+                    </div>
+                    <span class="field-hint">Cuant: Q4_K_M · Tamaño: 7.4 GB</span>
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Nombre amigable</label>
+                    <input class="field-input" value="Gemma 4 12B Q4_K_M" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Contexto (tokens)</label>
+                    <input class="field-input" type="number" value="4096" min="256" max="32768" step="256" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Threads CPU</label>
+                    <input class="field-input" type="number" value="8" min="1" max="64" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Max tokens respuesta</label>
+                    <input class="field-input" type="number" value="512" min="16" max="8192" step="32" />
+                  </div>
+                  <div class="field">
+                    <div class="slider-field">
+                      <label class="field-label">Temperatura · <span style="color:var(--accent)">0.70</span></label>
+                      <div class="slider-row">
+                        <input type="range" min="0" max="2" step="0.05" value="0.7" />
+                        <span class="slider-value">0.70</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <div class="slider-field">
+                      <label class="field-label">Top-p · <span style="color:var(--accent)">0.95</span></label>
+                      <div class="slider-row">
+                        <input type="range" min="0" max="1" step="0.01" value="0.95" />
+                        <span class="slider-value">0.95</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <div class="slider-field">
+                      <label class="field-label">Repeat penalty · <span style="color:var(--accent)">1.10</span></label>
+                      <div class="slider-row">
+                        <input type="range" min="0.5" max="2" step="0.05" value="1.1" />
+                        <span class="slider-value">1.10</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button class="btn primary" id="applyModel">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Aplicar config al backend
+                  </button>
+                  <button class="btn ghost">Refrescar info</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+                  Backend
+                </h3>
+                <p class="card-desc">Elegí cómo correr el modelo. Recomendado: <code>llama-cli</code>.</p>
+                <div class="form-grid">
+                  <div class="field span-2">
+                    <label class="field-label">Tipo de backend</label>
+                    <select class="field-select" id="backendKind">
+                      <option value="llama_cli" selected>llama-cli (subprocess, default)</option>
+                      <option value="llama_server">llama-server (HTTP)</option>
+                      <option value="llama_cpp">llama-cpp-python (binding)</option>
+                      <option value="ollama">Ollama</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="field-label">llama-cli path</label>
+                    <input class="field-input" placeholder="(vacío = buscar en PATH)" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">llama-server path</label>
+                    <input class="field-input" placeholder="(vacío = buscar en PATH)" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Modo de cómputo</label>
+                    <select class="field-select">
+                      <option value="cpu" selected>CPU</option>
+                      <option value="vulkan">Vulkan (experimental)</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="field-label">GPU layers (0 = off)</label>
+                    <input class="field-input" type="number" value="0" min="0" max="999" />
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button class="btn" id="testBackend">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Probar backend
+                  </button>
+                  <button class="btn primary" id="startBackend">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Iniciar modelo
+                  </button>
+                  <button class="btn danger" id="stopBackend">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                    Detener
+                  </button>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+                  Log del backend
+                </h3>
+                <div class="log-console" id="logConsole">
+                  <div class="log-line ok"><span class="log-ts">14:32:01</span><span class="log-msg">start() -> True</span></div>
+                  <div class="log-line"><span class="log-ts">14:32:01</span><span class="log-msg">backend_kind: llama_cli</span></div>
+                  <div class="log-line"><span class="log-ts">14:32:02</span><span class="log-msg">llama-cli encontrado en PATH</span></div>
+                  <div class="log-line"><span class="log-ts">14:32:02</span><span class="log-msg">Modelo existe: OK (7.4 GB)</span></div>
+                  <div class="log-line ok"><span class="log-ts">14:32:03</span><span class="log-msg">Backend arrancado · PID 18432</span></div>
+                  <div class="log-line"><span class="log-ts">14:33:14</span><span class="log-msg">generate_stream() → 312 chars en 14.8s</span></div>
+                  <div class="log-line"><span class="log-ts">14:33:14</span><span class="log-msg">first_token_sec=1.203 · t/s=18.4</span></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ METRICS ============ -->
+        <section class="screen" id="metrics">
+          <div class="screen-wrap">
+            <div class="screen-grid">
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+                  Rendimiento en vivo
+                </h3>
+                <p class="card-desc">Métricas del backend activo y del sistema. Click en "Refrescar" para actualizar.</p>
+                <div class="metric-grid" style="margin-top:14px">
+                  <div class="metric-tile">
+                    <div class="metric-top"><span class="metric-label">RSS proceso</span></div>
+                    <div class="metric-value">1.04<span class="unit">GB</span></div>
+                    <div class="bar"><div class="fill green" style="--w:7%"></div></div>
+                    <p>De 16 GB totales.</p>
+                  </div>
+                  <div class="metric-tile">
+                    <div class="metric-top"><span class="metric-label">Tokens/s</span></div>
+                    <div class="metric-value">18.4<span class="unit">t/s</span></div>
+                    <div class="bar"><div class="fill amber" style="--w:46%"></div></div>
+                    <p>Proxy (chars/4 ÷ elapsed).</p>
+                  </div>
+                  <div class="metric-tile">
+                    <div class="metric-top"><span class="metric-label">1er token</span></div>
+                    <div class="metric-value">1.20<span class="unit">s</span></div>
+                    <div class="bar"><div class="fill blue" style="--w:30%"></div></div>
+                    <p>Latencia a primer chunk.</p>
+                  </div>
+                  <div class="metric-tile">
+                    <div class="metric-top"><span class="metric-label">RAM disponible</span></div>
+                    <div class="metric-value">11.2<span class="unit">GB</span></div>
+                    <div class="bar"><div class="fill green" style="--w:70%"></div></div>
+                    <p>Tras cargar el modelo.</p>
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button class="btn primary" id="refreshMetrics">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Refrescar ahora
+                  </button>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H1l3-3-3-3"/><path d="M22 12A10 10 0 1 1 12 2"/><path d="M16 4l4 4-4 4"/></svg></span>
+                  Detalle de la última corrida
+                </h3>
+                <div style="margin-top:8px">
+                  <div class="kv"><span class="k">modelo_disco</span><span class="v">7.4 GB</span></div>
+                  <div class="kv"><span class="k">ctx_configurado</span><span class="v">4096</span></div>
+                  <div class="kv"><span class="k">elapsed_sec</span><span class="v accent">14.83</span></div>
+                  <div class="kv"><span class="k">char_count</span><span class="v">312</span></div>
+                  <div class="kv"><span class="k">tokens_per_sec</span><span class="v green">18.4</span></div>
+                  <div class="kv"><span class="k">first_token_sec</span><span class="v accent">1.203</span></div>
+                  <div class="kv"><span class="k">cpu_vulkan</span><span class="v">cpu · gpu_layers=0</span></div>
+                  <div class="kv"><span class="k">estado</span><span class="v green">ACTIVO</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ BENCHMARK ============ -->
+        <section class="screen" id="benchmark">
+          <div class="screen-wrap">
+            <div class="screen-grid">
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg></span>
+                  Benchmark local
+                </h3>
+                <p class="card-desc">10 prompts fijos en español. Mismos prompts → misma base para comparar modelos.</p>
+                <div class="form-grid">
+                  <div class="field">
+                    <label class="field-label">Archivo de prompts</label>
+                    <input class="field-input" value="benchmarks/prompts_es.json" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Etiqueta</label>
+                    <input class="field-input" value="gemma4-12b-q4km" />
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button class="btn primary" id="runBenchmark">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Correr benchmark
+                  </button>
+                  <button class="btn ghost">Abrir carpeta resultados</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
+                  Historial y comparativa
+                </h3>
+                <p class="card-desc">Ctrl+click para seleccionar 2 o más corridas y comparar.</p>
+                <div class="runs-grid" style="margin-top:14px">
+                  <div class="runs-list">
+                    <div class="runs-list-header">
+                      <span>Corridas</span>
+                      <button class="icon-btn" style="width:24px;height:24px" id="refreshRuns" title="Refrescar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      </button>
+                    </div>
+                    <div class="runs-list-body">
+                      <div class="run-item selected">
+                        <div class="run-item-title">gemma4-12b-q4km</div>
+                        <div class="run-item-meta"><b>Q4_K_M</b> · 7.4 GB · 14:33</div>
+                      </div>
+                      <div class="run-item">
+                        <div class="run-item-title">qwen3-14b-q4km</div>
+                        <div class="run-item-meta"><b>Q4_K_M</b> · 8.7 GB · 11:02</div>
+                      </div>
+                      <div class="run-item">
+                        <div class="run-item-title">phi4-14b-q4</div>
+                        <div class="run-item-meta"><b>Q4</b> · 8.1 GB · 09:48</div>
+                      </div>
+                      <div class="run-item">
+                        <div class="run-item-title">gemma4-12b-q5</div>
+                        <div class="run-item-meta"><b>Q5_K_M</b> · 8.6 GB · ayer</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="run-detail">
+                    <h4>gemma4-12b-q4km · 14:33</h4>
+                    <table class="compare-table">
+                      <thead>
+                        <tr><th>Métrica</th><th style="text-align:right">Valor</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr><td>wall_time_total</td><td class="num">142.4 s</td></tr>
+                        <tr><td>tokens_per_sec (prom)</td><td class="num winner">18.4 t/s</td></tr>
+                        <tr><td>first_token (prom)</td><td class="num">1.21 s</td></tr>
+                        <tr><td>ram_peak</td><td class="num">1.08 GB</td></tr>
+                        <tr><td>prompts corridos</td><td class="num">10 / 10</td></tr>
+                        <tr><td>errores</td><td class="num">0</td></tr>
+                      </tbody>
+                    </table>
+                    <div class="btn-row">
+                      <button class="btn" id="compareBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                        Comparar seleccionados
+                      </button>
+                      <button class="btn ghost">Guardar comparación</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ PRESETS ============ -->
+        <section class="screen" id="presets">
+          <div class="screen-wrap">
+            <div class="card">
+              <h3>
+                <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+                Presets de uso
+              </h3>
+              <p class="card-desc">Contexto breve y consistente. La calidad real depende del modelo + cuantización + parámetros.</p>
+              <div class="preset-grid" style="margin-top:14px" id="presetGrid">
+                <!-- Filled by JS -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ GPU / Vulkan ============ -->
+        <section class="screen" id="gpu">
+          <div class="screen-wrap">
+            <div class="screen-grid">
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10v4M10 10v4M14 10v4M18 10v4"/></svg></span>
+                  GPU y Vulkan
+                </h3>
+                <p class="card-desc">Detección automática de hardware. Vulkan NO cambia la inteligencia del modelo.</p>
+                <div class="gpu-grid" style="margin-top:14px">
+                  <div class="gpu-tile">
+                    <div class="gpu-tile-label">GPU detectada</div>
+                    <div class="gpu-tile-value">AMD Radeon RX550</div>
+                    <div class="gpu-tile-sub">VRAM: 4 GB · Driver 31.0.14001.0</div>
+                  </div>
+                  <div class="gpu-tile">
+                    <div class="gpu-tile-label">vulkan-1.dll</div>
+                    <div class="gpu-tile-value" style="color:var(--green)">Presente</div>
+                    <div class="gpu-tile-sub">C:\Windows\System32\vulkan-1.dll</div>
+                  </div>
+                  <div class="gpu-tile">
+                    <div class="gpu-tile-label">Vulkan disponible</div>
+                    <div class="gpu-tile-value" style="color:var(--amber)">Heurístico: sí</div>
+                    <div class="gpu-tile-sub">API 1.3.240 · Driver 31.0.14001</div>
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button class="btn primary" id="redetectGpu">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Re-detectar
+                  </button>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>
+                  <span class="h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+                  Avisos importantes
+                </h3>
+                <p>Vulkan / GPU offload es <strong>experimental</strong> en AMD Radeon RX550 4 GB. Si falla, volvé a CPU — no rompe la app.</p>
+                <p>La calidad de la respuesta depende del <strong>modelo + cuantización + parámetros</strong>, no del backend. Vulkan solo afecta velocidad.</p>
+                <p>Para RX550 con 4 GB VRAM, se recomienda <code>gpu_layers=0</code> (CPU puro) o como máximo <code>gpu_layers=10</code> para modelos Q4 de 7B-12B.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ COMMAND PALETTE ============ -->
+<div class="cmdk-backdrop" id="cmdkBackdrop"></div>
+<div class="cmdk" id="cmdk" role="dialog" aria-label="Paleta de comandos">
+  <div class="cmdk-input-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="cmdk-input" id="cmdkInput" placeholder="Buscar pantallas, acciones…" autocomplete="off" />
+    <span class="cmdk-esc">ESC</span>
+  </div>
+  <div class="cmdk-list" id="cmdkList">
+    <div class="cmdk-section">Navegación</div>
+    <button class="cmdk-item" data-cmd="goto" data-screen="chat"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span><span class="label">Ir a Chat</span><span class="kbd">G C</span></button>
+    <button class="cmdk-item" data-cmd="goto" data-screen="config"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="label">Ir a Modelo y backend</span><span class="kbd">G M</span></button>
+    <button class="cmdk-item" data-cmd="goto" data-screen="metrics"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span class="label">Ir a Rendimiento</span><span class="kbd">G P</span></button>
+    <button class="cmdk-item" data-cmd="goto" data-screen="benchmark"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg></span><span class="label">Ir a Benchmark</span><span class="kbd">G B</span></button>
+    <button class="cmdk-item" data-cmd="goto" data-screen="presets"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span><span class="label">Ir a Presets</span><span class="kbd">G R</span></button>
+    <button class="cmdk-item" data-cmd="goto" data-screen="gpu"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10v4M10 10v4M14 10v4M18 10v4"/></svg></span><span class="label">Ir a GPU / Vulkan</span><span class="kbd">G G</span></button>
+    <div class="cmdk-section">Acciones</div>
+    <button class="cmdk-item" data-cmd="new-chat"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><span class="label">Nueva conversación</span></button>
+    <button class="cmdk-item" data-cmd="start-backend"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></span><span class="label">Iniciar modelo</span></button>
+    <button class="cmdk-item" data-cmd="stop-backend"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></span><span class="label">Detener modelo</span></button>
+    <button class="cmdk-item" data-cmd="run-benchmark"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg></span><span class="label">Correr benchmark</span></button>
+    <button class="cmdk-item" data-cmd="apply-model"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="label">Aplicar config al backend</span></button>
+  </div>
+  <div class="cmdk-footer">
+    <div class="hint">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
+      <span><kbd>Enter</kbd> ejecutar</span>
+    </div>
+    <span>ForgeMind Local · 100% offline</span>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast">
+  <div class="toast-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <span id="toastText">Listo</span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const $  = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+  // ---------- Toast ----------
+  const toast = $('#toast');
+  const toastText = $('#toastText');
+  let toastTimer;
+  function showToast(msg) {
+    toastText.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+  }
+
+  // ---------- Ripple ----------
+  function attachRipple(el) {
+    el.addEventListener('click', function (e) {
+      const rect = this.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height);
+      const ripple = document.createElement('span');
+      ripple.className = 'ripple';
+      ripple.style.width = ripple.style.height = size + 'px';
+      ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+      ripple.style.top  = (e.clientY - rect.top  - size / 2) + 'px';
+      this.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 600);
+    });
+  }
+  $$('.btn, .icon-btn, .send-btn, .tool-btn, .nav-btn, .new-chat-btn, .cmdk-item, .suggestion-card, .preset-pill, .preset-card, .run-item').forEach(attachRipple);
+
+  // ---------- Presets data (from presets.py) ----------
+  const PRESETS = [
+    { key: 'diario', label: 'Diario', desc: 'Asistente personal útil, claro y directo. Respuestas cortas y accionables.', temp: 0.7, top_p: 0.95, max: 512 },
+    { key: 'coding', label: 'Coding', desc: 'Asistente de programación. Código ejecutable, decisiones y trade-offs.', temp: 0.2, top_p: 0.95, max: 1024 },
+    { key: 'auditoria', label: 'Auditoría', desc: 'Auditor técnico. Análisis crítico, estructurado, hallazgos concretos.', temp: 0.2, top_p: 0.95, max: 1024 },
+    { key: 'resumen', label: 'Resumen', desc: 'Resumidor. Hechos clave, comprime, elimina redundancia. +3 puntos clave.', temp: 0.3, top_p: 0.95, max: 512 },
+    { key: 'razonamiento', label: 'Razonamiento', desc: 'Pensar paso a paso, mostrar razonamiento y luego conclusión.', temp: 0.4, top_p: 0.95, max: 1024 },
+    { key: 'espanol_claro', label: 'Español claro', desc: 'Español neutro, sin anglicismos. Frases cortas. Sin relleno.', temp: 0.6, top_p: 0.95, max: 512 },
+    { key: 'prompt_largo', label: 'Prompt largo', desc: 'Respeta la estructura del prompt largo, no recorta secciones.', temp: 0.5, top_p: 0.95, max: 2048 },
+  ];
+  let currentPreset = 'diario';
+
+  // Render preset grid
+  const presetGrid = $('#presetGrid');
+  if (presetGrid) {
+    presetGrid.innerHTML = PRESETS.map(p => `
+      <div class="preset-card ${p.key === currentPreset ? 'active' : ''}" data-preset="${p.key}">
+        <div class="preset-card-title">${p.label}</div>
+        <div class="preset-card-desc">${p.desc}</div>
+        <div class="preset-card-params">
+          <span>temp ${p.temp}</span>
+          <span>top_p ${p.top_p}</span>
+          <span>max ${p.max}</span>
+        </div>
+      </div>
+    `).join('');
+    $$('.preset-card').forEach(card => {
+      card.addEventListener('click', () => {
+        currentPreset = card.dataset.preset;
+        $$('.preset-card').forEach(c => c.classList.toggle('active', c.dataset.preset === currentPreset));
+        const p = PRESETS.find(x => x.key === currentPreset);
+        $('#presetName').textContent = p.label;
+        showToast(`Preset: ${p.label}`);
+        switchTo('chat');
+      });
+    });
+  }
+
+  // Preset pill cycle
+  $('#presetPill')?.addEventListener('click', () => {
+    const idx = PRESETS.findIndex(p => p.key === currentPreset);
+    const next = PRESETS[(idx + 1) % PRESETS.length];
+    currentPreset = next.key;
+    $('#presetName').textContent = next.label;
+    $$('.preset-card').forEach(c => c.classList.toggle('active', c.dataset.preset === currentPreset));
+    showToast(`Preset: ${next.label}`);
+  });
+
+  // ---------- Tab switching ----------
+  const navBtns = $$('.nav-btn');
+  const screens = $$('.screen');
+  const pageTitle = $('#pageTitle');
+  const META = {
+    chat:      'Chat',
+    config:    'Modelo y backend',
+    metrics:   'Rendimiento',
+    benchmark: 'Benchmark',
+    presets:   'Presets',
+    gpu:       'GPU / Vulkan',
+  };
+  function switchTo(id) {
+    navBtns.forEach(b => b.classList.toggle('active', b.dataset.screen === id));
+    screens.forEach(s => s.classList.toggle('active', s.id === id));
+    pageTitle.textContent = META[id] || '';
+    closeMobileSidebar();
+    const content = $('.content');
+    if (content) content.scrollTop = 0;
+  }
+  navBtns.forEach(b => b.addEventListener('click', () => switchTo(b.dataset.screen)));
+  $$('[data-jump]').forEach(el => el.addEventListener('click', () => switchTo(el.dataset.jump)));
+
+  // ---------- Sidebar collapse ----------
+  const collapseBtn = $('#collapseBtn');
+  const expandBtn = $('#expandBtn');
+  function setCollapsed(collapsed) {
+    document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
+    try { localStorage.setItem('forgemind-sidebar', collapsed ? 'collapsed' : 'expanded'); } catch (e) {}
+  }
+  collapseBtn?.addEventListener('click', () => setCollapsed(true));
+  expandBtn?.addEventListener('click', () => setCollapsed(false));
+
+  // ---------- Mobile drawer ----------
+  const sidebar = $('#sidebar');
+  const mobileBackdrop = $('#mobileBackdrop');
+  const mobileMenuBtn = $('#mobileMenuBtn');
+  function openMobileSidebar() { sidebar.classList.add('open'); mobileBackdrop.classList.add('open'); }
+  function closeMobileSidebar() { sidebar.classList.remove('open'); mobileBackdrop.classList.remove('open'); }
+  mobileMenuBtn?.addEventListener('click', openMobileSidebar);
+  mobileBackdrop?.addEventListener('click', closeMobileSidebar);
+
+  // ---------- Composer ----------
+  const prompt = $('#prompt');
+  const sendBtn = $('#sendBtn');
+  const messages = $('#messages');
+  const chatEmpty = $('#chatEmpty');
+  let chatStarted = false;
+
+  function updateSendBtn() {
+    if (!sendBtn || !prompt) return;
+    const v = (prompt.value || '').trim();
+    sendBtn.disabled = !v;
+  }
+  function showEmptyState() {
+    if (chatEmpty) chatEmpty.hidden = false;
+    if (messages) messages.hidden = true;
+    chatStarted = false;
+  }
+  function hideEmptyState() {
+    if (chatEmpty) chatEmpty.hidden = true;
+    if (messages) messages.hidden = false;
+    chatStarted = true;
+  }
+
+  function autoGrow() {
+    if (!prompt) return;
+    prompt.style.height = '24px';
+    prompt.style.height = Math.min(prompt.scrollHeight, 200) + 'px';
+    updateSendBtn();
+  }
+  prompt?.addEventListener('input', autoGrow);
+  prompt?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  function scrollMessagesToBottom() { messages.scrollTop = messages.scrollHeight; }
+
+  function appendUserMsg(text) {
+    const el = document.createElement('div');
+    el.className = 'msg user';
+    el.innerHTML = `
+      <div class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div class="msg-content">
+        <div class="msg-name">Tú</div>
+        <div class="msg-body"><p></p></div>
+      </div>`;
+    el.querySelector('p').textContent = text;
+    messages.appendChild(el);
+    scrollMessagesToBottom();
+  }
+
+  function appendTypingMsg() {
+    const el = document.createElement('div');
+    el.className = 'msg ai';
+    el.id = 'typingMsg';
+    const preset = PRESETS.find(p => p.key === currentPreset);
+    el.innerHTML = `
+      <div class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l2 2 4-4"/></svg>
+      </div>
+      <div class="msg-content">
+        <div class="msg-name">ForgeMind <span class="msg-preset">Preset: ${preset ? preset.label : 'Diario'}</span></div>
+        <div class="msg-body"><div class="typing"><span></span><span></span><span></span></div></div>
+      </div>`;
+    messages.appendChild(el);
+    scrollMessagesToBottom();
+    return el;
+  }
+
+  function appendAiMsg(html, meta) {
+    const preset = PRESETS.find(p => p.key === currentPreset);
+    const el = document.createElement('div');
+    el.className = 'msg ai';
+    el.innerHTML = `
+      <div class="msg-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 13l2 2 4-4"/></svg>
+      </div>
+      <div class="msg-content">
+        <div class="msg-name">ForgeMind <span class="msg-preset">Preset: ${preset ? preset.label : 'Diario'}</span></div>
+        <div class="msg-body">${html}</div>
+        <div class="msg-meta">
+          <span>1er token: ${meta.first_token}s</span>
+          <span>·</span>
+          <span>${meta.tps} t/s</span>
+          <span>·</span>
+          <span>${meta.chars} chars</span>
+        </div>
+        <div class="msg-actions">
+          <button class="msg-action" title="Copiar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          <button class="msg-action" title="Regenerar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+        </div>
+      </div>`;
+    messages.appendChild(el);
+    el.querySelectorAll('.msg-action').forEach(attachRipple);
+    el.querySelector('.msg-action[title="Copiar"]')?.addEventListener('click', () => {
+      const text = el.querySelector('.msg-body').innerText;
+      navigator.clipboard?.writeText(text).then(() => showToast('Respuesta copiada'));
+    });
+    scrollMessagesToBottom();
+    return el;
+  }
+
+  const SAMPLE_REPLIES = [
+    `<p>La cuantización <strong>Q4_K_M</strong> reduce los pesos del modelo de 16 bits a ~4 bits usando un esquema que preserva la mayor parte del comportamiento original. Esto baja:</p>
+     <ul>
+       <li>RAM necesaria (~4x menos)</li>
+       <li>Tamaño en disco (~3-4x menos)</li>
+       <li>Tiempo de carga del modelo</li>
+     </ul>
+     <p>El trade-off es una leve pérdida de calidad, pero para la mayoría de tareas prácticas (chat, resumen, código) es imperceptible. Por eso es el estándar para correr LLMs en PCs comunes sin GPU dedicada.</p>`,
+    `<p>Para esta PC (16 GB RAM, RX550 4 GB), mi recomendación es:</p>
+     <ol>
+       <li><strong>Gemma 4 12B Q4_K_M</strong> — mejor balance calidad/velocidad, ~7.4 GB en disco, ~18 t/s en CPU.</li>
+       <li><strong>Qwen3-14B Q4_K_M</strong> — mejor en coding, pero ~8.7 GB y ~12 t/s.</li>
+       <li><strong>Phi-4 14B Q4</strong> — razonamiento sólido, pero más lento en tu hardware.</li>
+     </ol>
+     <p>Corré el benchmark con los 10 prompts ES para confirmar los números en tu máquina.</p>`
+  ];
+  let replyIdx = 0;
+  function send() {
+    const v = (prompt.value || '').trim();
+    if (!v) return;
+    if (!chatStarted) hideEmptyState();
+    appendUserMsg(v);
+    prompt.value = '';
+    autoGrow();
+    const typing = appendTypingMsg();
+    setTimeout(() => {
+      typing.remove();
+      const html = SAMPLE_REPLIES[replyIdx % SAMPLE_REPLIES.length];
+      replyIdx++;
+      appendAiMsg(html, { first_token: '1.18', tps: '18.6', chars: '428' });
+    }, 900 + Math.random() * 500);
+  }
+  sendBtn?.addEventListener('click', send);
+
+  // Copy initial AI message
+  $$('.msg.ai .msg-action[title="Copiar"]').forEach(b => {
+    b.addEventListener('click', () => {
+      const text = b.closest('.msg').querySelector('.msg-body').innerText;
+      navigator.clipboard?.writeText(text).then(() => showToast('Respuesta copiada'));
+    });
+  });
+
+  // ---------- New chat ----------
+  function newChat() {
+    messages.innerHTML = '';
+    showEmptyState();
+    switchTo('chat');
+    showToast('Nueva conversación');
+    if (prompt) { prompt.focus(); autoGrow(); }
+  }
+  $('#newChatBtn')?.addEventListener('click', newChat);
+  $('#headerNewChat')?.addEventListener('click', newChat);
+
+  // ---------- Clear ----------
+  $('#clearBtn')?.addEventListener('click', () => {
+    messages.innerHTML = '';
+    showEmptyState();
+    showToast('Conversación limpiada');
+  });
+
+  // ---------- Suggestion cards ----------
+  $$('.suggestion-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const text = card.dataset.suggestion || '';
+      if (!prompt) return;
+      prompt.value = text;
+      autoGrow();
+      prompt.focus();
+      const len = prompt.value.length;
+      prompt.setSelectionRange(len, len);
+    });
+  });
+
+  // ---------- Attach / Tools / User (mock) ----------
+  $('#attachBtn')?.addEventListener('click', () => showToast('Adjuntar archivo (mock)'));
+  $('#toolsBtn')?.addEventListener('click', () => showToast('Herramientas (mock)'));
+  $('#userRow')?.addEventListener('click', () => showToast('Perfil de usuario (mock)'));
+
+  // ---------- Action buttons ----------
+  $('#applyModel')?.addEventListener('click', () => showToast('Config aplicada al backend'));
+  $('#testBackend')?.addEventListener('click', () => showToast('Backend OK · llama-cli encontrado'));
+  $('#startBackend')?.addEventListener('click', () => showToast('Iniciando modelo…'));
+  $('#stopBackend')?.addEventListener('click', () => showToast('Backend detenido'));
+  $('#refreshMetrics')?.addEventListener('click', () => showToast('Métricas actualizadas'));
+  $('#runBenchmark')?.addEventListener('click', () => showToast('Benchmark iniciado · 10 prompts'));
+  $('#refreshRuns')?.addEventListener('click', () => showToast('Lista de corridas actualizada'));
+  $('#compareBtn')?.addEventListener('click', () => showToast('Comparando 2 corridas…'));
+  $('#redetectGpu')?.addEventListener('click', () => showToast('Re-detección GPU completada'));
+  $('#pickGguf')?.addEventListener('click', () => showToast('Selector de archivos abierto'));
+
+  // ---------- Run item selection ----------
+  $$('.run-item').forEach(item => {
+    item.addEventListener('click', e => {
+      if (!e.ctrlKey && !e.metaKey) {
+        $$('.run-item').forEach(r => r.classList.remove('selected'));
+      }
+      item.classList.toggle('selected');
+    });
+  });
+
+  // ---------- Command palette ----------
+  const cmdkBtn = $('#cmdkBtn');
+  const cmdk = $('#cmdk');
+  const cmdkBackdrop = $('#cmdkBackdrop');
+  const cmdkInput = $('#cmdkInput');
+  const cmdkItems = $$('.cmdk-item');
+  let cmdkSelected = -1;
+
+  function openCmdk() {
+    cmdk.classList.add('open');
+    cmdkBackdrop.classList.add('open');
+    cmdkInput.value = '';
+    filterCmdk('');
+    setTimeout(() => cmdkInput.focus(), 60);
+  }
+  function closeCmdk() {
+    cmdk.classList.remove('open');
+    cmdkBackdrop.classList.remove('open');
+  }
+  function filterCmdk(q) {
+    q = q.toLowerCase().trim();
+    let firstShown = -1;
+    cmdkItems.forEach((it, i) => {
+      const label = it.querySelector('.label').textContent.toLowerCase();
+      const match = !q || label.includes(q);
+      it.style.display = match ? '' : 'none';
+      it.classList.remove('selected');
+      if (match && firstShown === -1) firstShown = i;
+    });
+    cmdkSelected = firstShown;
+    if (cmdkItems[cmdkSelected]) cmdkItems[cmdkSelected].classList.add('selected');
+  }
+  function moveCmdk(delta) {
+    const visible = cmdkItems.map((it, i) => it.style.display !== 'none' ? i : -1).filter(i => i !== -1);
+    if (!visible.length) return;
+    const cur = visible.indexOf(cmdkSelected);
+    const next = visible[(cur + delta + visible.length) % visible.length];
+    cmdkItems.forEach(it => it.classList.remove('selected'));
+    cmdkSelected = next;
+    cmdkItems[next].classList.add('selected');
+    cmdkItems[next].scrollIntoView({ block: 'nearest' });
+  }
+  function execCmdk() {
+    const it = cmdkItems[cmdkSelected];
+    if (!it) return;
+    const cmd = it.dataset.cmd;
+    if (cmd === 'goto') switchTo(it.dataset.screen);
+    else if (cmd === 'new-chat') $('#newChatBtn').click();
+    else if (cmd === 'start-backend') $('#startBackend')?.click();
+    else if (cmd === 'stop-backend') $('#stopBackend')?.click();
+    else if (cmd === 'run-benchmark') $('#runBenchmark')?.click();
+    else if (cmd === 'apply-model') { switchTo('config'); setTimeout(() => $('#applyModel')?.click(), 200); }
+    closeCmdk();
+  }
+  cmdkBtn?.addEventListener('click', openCmdk);
+  cmdkBackdrop?.addEventListener('click', closeCmdk);
+  cmdkInput?.addEventListener('input', e => filterCmdk(e.target.value));
+  cmdkItems.forEach((it, i) => {
+    it.addEventListener('mouseenter', () => {
+      cmdkItems.forEach(x => x.classList.remove('selected'));
+      it.classList.add('selected');
+      cmdkSelected = i;
+    });
+    it.addEventListener('click', execCmdk);
+  });
+
+  // ---------- Keyboard shortcuts ----------
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      cmdk.classList.contains('open') ? closeCmdk() : openCmdk();
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (cmdk.classList.contains('open')) { closeCmdk(); return; }
+      if (sidebar.classList.contains('open')) { closeMobileSidebar(); return; }
+    }
+    if (cmdk.classList.contains('open')) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); moveCmdk(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); moveCmdk(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); execCmdk(); }
+      return;
+    }
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.key === 'g') {
+      const handler = ev => {
+        const map = { c: 'chat', m: 'config', p: 'metrics', b: 'benchmark', r: 'presets', g: 'gpu' };
+        const t = map[ev.key.toLowerCase()];
+        if (t) { ev.preventDefault(); switchTo(t); }
+        document.removeEventListener('keydown', handler);
+      };
+      setTimeout(() => {
+        document.addEventListener('keydown', handler, { once: true });
+        setTimeout(() => document.removeEventListener('keydown', handler), 1200);
+      }, 0);
+    }
+  });
+
+  // ---------- Window controls (mock) ----------
+  $$('.win-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      if (b.classList.contains('close')) showToast('Cerrar ventana (mock)');
+      else if (b.classList.contains('min')) showToast('Minimizar (mock)');
+      else if (b.classList.contains('max')) showToast('Maximizar (mock)');
+    });
+  });
+
+  if (prompt) autoGrow();
+})();
+</script>
+</body>
+</html>
