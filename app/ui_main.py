@@ -64,6 +64,9 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QStatusBar,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextBrowser,
     QTextEdit,
     QToolButton,
     QVBoxLayout,
@@ -94,12 +97,12 @@ from .presets import PRESETS, default_preset, get_preset
 
 QSS = """
 /* === Base / shared === */
-* { font-family: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+* { font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
 QMainWindow, #AppRoot, #TitleBar, #Sidebar, #MainArea, #ContentHost {
     background: #1a1918;
     color: #f5f4ee;
 }
-QWidget { color: #f5f4ee; font-size: 13px; }
+QWidget { color: #f5f4ee; font-size: 14px; }
 
 QLabel { background: transparent; color: #f5f4ee; }
 QLabel[role="muted"] { color: #a8a499; }
@@ -108,6 +111,16 @@ QLabel[role="accent"] { color: #d97757; }
 QLabel[role="green"] { color: #8ab589; }
 QLabel[role="amber"] { color: #d4a361; }
 QLabel[role="rose"] { color: #d88a83; }
+
+/* Serif headlines — Newsreader for editorial identity (mockup L40).
+   Qt does NOT honor the generic `serif` keyword the way browsers do,
+   so we list explicit fallbacks for Windows (Georgia), Linux
+   (Liberation Serif / DejaVu Serif), and macOS (Times New Roman). */
+QLabel[font-role="serif"] {
+    font-family: "Newsreader", "Tiempos Text", Georgia, "Liberation Serif",
+                 "DejaVu Serif", "Times New Roman", serif;
+    letter-spacing: -0.01em;
+}
 
 QFrame[role="card"] {
     background: #282623;
@@ -135,7 +148,16 @@ QFrame[role="divider"] { background: #34312e; max-height: 1px; min-height: 1px; 
     border-bottom: 1px solid #34312e;
 }
 #TitleBar QLabel { color: #a8a499; }
-#TitleBar QLabel#BrandLabel { color: #d8d4c8; font-size: 13px; font-weight: 500; }
+#TitleBar QLabel#BrandLabel {
+    color: #d8d4c8; font-size: 13px; font-weight: 500;
+    font-family: "Newsreader", Georgia, "Liberation Serif", "DejaVu Serif",
+                 "Times New Roman", serif; letter-spacing: -0.005em;
+}
+#TitleBar QLabel#StatusDot {
+    background: #8ab589; border-radius: 3px;
+    min-width: 6px; max-width: 6px; min-height: 6px; max-height: 6px;
+}
+#TitleBar QLabel#StatusDot[idle="true"] { background: #787469; }
 #WinBtn {
     background: transparent;
     border: none;
@@ -159,14 +181,22 @@ QFrame[role="divider"] { background: #34312e; max-height: 1px; min-height: 1px; 
 }
 #Sidebar QPushButton#SidebarCollapse:hover { background: rgba(255,255,255,0.045); color: #f5f4ee; }
 
-#BrandName { color: #f5f4ee; font-size: 15px; font-weight: 500; }
+#BrandName {
+    color: #f5f4ee; font-size: 15px; font-weight: 500;
+    font-family: "Newsreader", Georgia, "Liberation Serif", "DejaVu Serif",
+                 "Times New Roman", serif; letter-spacing: -0.01em;
+}
 #BrandTag { color: #787469; font-size: 10.5px; }
 
 #ModelCard {
     background: #282623; border: 1px solid #34312e; border-radius: 10px;
 }
 #ModelCard:hover { border-color: #444039; background: #2f2d2a; cursor: pointer; }
-#ModelCard QLabel#McName { color: #f5f4ee; font-size: 13.5px; font-weight: 500; }
+#ModelCard QLabel#McName {
+    color: #f5f4ee; font-size: 13.5px; font-weight: 500;
+    font-family: "Newsreader", Georgia, "Liberation Serif", "DejaVu Serif",
+                 "Times New Roman", serif; letter-spacing: -0.005em;
+}
 #ModelCard QLabel#McMeta { color: #a8a499; font-size: 11.5px; }
 
 QPushButton#NewChat {
@@ -185,11 +215,15 @@ QLabel#NavSectionLabel {
 QPushButton#NavBtn {
     background: transparent; color: #d8d4c8; border: none;
     border-radius: 6px; padding: 7px 10px; text-align: left;
-    font-size: 13px; font-weight: 450;
+    font-size: 13px; font-weight: 450; letter-spacing: -0.005em;
+    /* 3px accent left-bar via border (visible only when checked) */
+    border-left: 3px solid transparent;
+    margin-left: -3px;
 }
 QPushButton#NavBtn:hover { background: rgba(255,255,255,0.045); color: #f5f4ee; }
 QPushButton#NavBtn:checked {
     background: rgba(255,255,255,0.075); color: #f5f4ee; font-weight: 500;
+    border-left: 3px solid #d97757;
 }
 QPushButton#NavBtn:checked QLabel#NavIco { color: #d97757; }
 QLabel#NavIco { color: #a8a499; }
@@ -208,18 +242,20 @@ QLabel#NavKbd {
     min-height: 6px; max-height: 6px;
 }
 
-/* === Header === */
+/* === Header === (solid bg — Qt cannot do backdrop-filter blur) */
 #Header {
-    background: rgba(40,38,35,0.88);
+    background: #282623;
     border-bottom: 1px solid #34312e;
 }
 #Header QLabel#BreadTitle {
     color: #f5f4ee; font-size: 15px; font-weight: 500;
+    font-family: "Newsreader", Georgia, "Liberation Serif", "DejaVu Serif",
+                 "Times New Roman", serif; letter-spacing: -0.01em;
 }
 #Header QLabel#BreadSub { color: #a8a499; font-size: 12px; }
 
 QFrame#Chip {
-    background: #282623; border: 1px solid #444039; border-radius: 13px;
+    background: #282623; border: 1px solid #444039; border-radius: 999px;
 }
 QFrame#Chip:hover { background: #2f2d2a; border-color: #564f47; }
 QFrame#Chip[accent="true"] {
@@ -239,6 +275,7 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit, QTextEdit {
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {
     border: 1px solid rgba(217,119,87,0.34);
     background: #282623;
+    /* glow approximation: a thicker accent-tinted border */
 }
 QPlainTextEdit, QTextEdit { font-family: "JetBrains Mono", "Consolas", "Courier New", monospace; font-size: 12.5px; }
 QComboBox::drop-down { border: 0; width: 22px; }
@@ -258,7 +295,19 @@ QSlider::handle:horizontal {
     margin: -5px 0; border-radius: 7px;
 }
 QSlider::handle:horizontal:hover { background: #c5663f; }
-QSlider::sub-page:horizontal { background: rgba(217,119,87,0.34); border-radius: 2px; }
+QSlider::sub-page:horizontal { background: #151413; border-radius: 2px; }
+/* slider value box (mockup L1121-1132) */
+QLabel#SliderValue {
+    color: #d8d4c8;
+    background: #151413;
+    border: 1px solid #34312e;
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-width: 60px;
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 12.5px;
+    qproperty-alignment: AlignCenter;
+}
 
 /* === Buttons (general) === */
 QPushButton {
@@ -271,9 +320,11 @@ QPushButton:disabled { color: #787469; background: #211f1d; border-color: #34312
 
 QPushButton[primary="true"] {
     background: #d97757; color: #1f1e1d; border: none; font-weight: 500;
+    /* inset top highlight (mockup L1159) — Qt cannot do inset shadow,
+       so we approximate with a 1px gradient via border-image none; */
 }
 QPushButton[primary="true"]:hover { background: #c5663f; }
-QPushButton[primary="true"]:pressed { background: #b1582e; }
+QPushButton[primary="true"]:pressed { background: #b1582e; padding-top: 7px; padding-bottom: 5px; }
 
 QPushButton[ghost="true"] {
     background: transparent; color: #d8d4c8; border: none; font-weight: 500;
@@ -285,10 +336,10 @@ QPushButton[danger="true"] {
 }
 QPushButton[danger="true"]:hover { background: rgba(216,138,131,0.14); }
 
-/* === Status pill === */
+/* === Status pill === (true pill shape per mockup) */
 QFrame#StatusPill {
     background: rgba(138,181,137,0.14); border: 1px solid rgba(138,181,137,0.32);
-    border-radius: 10px;
+    border-radius: 999px;
 }
 QFrame#StatusPill QLabel { color: #8ab589; font-size: 10.5px; font-weight: 500; background: transparent; }
 QFrame#StatusPill QLabel#PillDot {
@@ -310,7 +361,7 @@ QWidget#MsgBubble { background: transparent; }
 QLabel#MsgName { color: #a8a499; font-size: 12px; font-weight: 600; background: transparent; }
 QLabel#MsgPreset {
     color: #d97757; background: rgba(217,119,87,0.14); border: 1px solid rgba(217,119,87,0.34);
-    border-radius: 9px; font-size: 10.5px; font-weight: 500; padding: 1px 7px;
+    border-radius: 999px; font-size: 10.5px; font-weight: 500; padding: 1px 8px;
 }
 QLabel#MsgBody { color: #f5f4ee; font-size: 14.5px; line-height: 1.65; background: transparent; }
 QLabel#MsgBody code, QLabel#MsgBody pre {
@@ -333,13 +384,14 @@ QFrame#Composer {
     background: #2f2d2a; border: 1px solid #444039; border-radius: 20px;
 }
 QFrame#Composer:focus { border: 1px solid rgba(217,119,87,0.34); }
+QFrame[composer-focused="true"] { border: 1px solid rgba(217,119,87,0.34); }
 QPlainTextEdit#ComposerEdit {
     background: transparent; border: none; padding: 4px 6px;
     color: #f5f4ee; font-size: 14.5px;
 }
 
 QPushButton#PresetPill {
-    background: #151413; border: 1px solid #34312e; border-radius: 13px;
+    background: #151413; border: 1px solid #34312e; border-radius: 999px;
     color: #d8d4c8; font-size: 12px; font-weight: 500; padding: 4px 10px;
 }
 QPushButton#PresetPill:hover { background: rgba(255,255,255,0.045); color: #f5f4ee; border-color: #444039; }
@@ -349,7 +401,7 @@ QPushButton#SendBtn {
     min-width: 32px; max-width: 32px; min-height: 32px; max-height: 32px;
 }
 QPushButton#SendBtn:hover { background: #c5663f; }
-QPushButton#SendBtn:pressed { background: #b1582e; }
+QPushButton#SendBtn:pressed { background: #b1582e; padding-top: 1px; }
 QPushButton#SendBtn:disabled { background: #564f47; color: #787469; }
 
 QPushButton#ToolBtn {
@@ -372,13 +424,26 @@ QLabel#PresetParams {
     color: #787469; font-family: "JetBrains Mono", "Consolas", monospace; font-size: 10.5px;
 }
 
-/* === Log console === */
-QPlainTextEdit#LogConsole {
+/* === Log console === (rich-text colored log lines) */
+QTextBrowser#LogConsole {
     background: #151413; color: #a8a499; border: 1px solid #34312e; border-radius: 10px;
     font-family: "JetBrains Mono", "Consolas", "Courier New", monospace; font-size: 11.5px;
+    padding: 6px;
 }
+QTextBrowser#LogConsole QScrollBar:vertical { margin: 4px; }
 
-/* === Run items === */
+/* === Run items === (selected state with accent left-bar per mockup L1370-1394) */
+QListWidget#RunsList { background: transparent; border: none; outline: 0; }
+QListWidget#RunsList::item {
+    padding: 10px 12px; border-bottom: 1px solid #34312e;
+    border-left: 3px solid transparent;
+}
+QListWidget#RunsList::item:hover { background: rgba(255,255,255,0.045); }
+QListWidget#RunsList::item:selected {
+    background: rgba(217,119,87,0.14);
+    border-left: 3px solid #d97757;
+    color: #f5f4ee;
+}
 QFrame#RunItem {
     background: transparent; border-bottom: 1px solid #34312e;
 }
@@ -411,9 +476,27 @@ QListWidget#CmdList::item:selected {
 QListWidget#CmdList::item:hover {
     background: rgba(255,255,255,0.075); color: #f5f4ee;
 }
+/* command palette item layout (icon + label + kbd via custom widget) */
+QListWidget#CmdList::item {
+    padding: 0; margin: 1px 6px; border-radius: 10px;
+}
+QLabel#CmdItemIcon { background: transparent; }
+QLabel#CmdItemLabel { color: #d8d4c8; font-size: 13.5px; background: transparent; }
+QLabel#CmdItemKbd {
+    color: #787469; font-family: "JetBrains Mono", "Consolas", monospace;
+    background: #151413; border: 1px solid #34312e; border-radius: 4px;
+    font-size: 10.5px; padding: 1px 5px;
+}
+QFrame#CmdFooterRow {
+    background: transparent; border-top: 1px solid #34312e;
+}
 QLabel#CmdFooter {
     color: #787469; font-size: 11px; padding: 8px 14px;
-    border-top: 1px solid #34312e;
+    background: transparent;
+}
+QLabel#CmdFooterRight {
+    color: #787469; font-size: 11px; padding: 8px 14px;
+    background: transparent;
 }
 QFrame#CmdBackdrop { background: rgba(0,0,0,0.55); }
 
@@ -428,18 +511,21 @@ QLabel#ToastIcon {
 }
 QLabel#ToastText { color: #f5f4ee; font-size: 13px; font-weight: 500; }
 
-/* === Progress bar (loading bars) === */
+/* === Progress bar (loading bars) === (color variants per mockup L1296-1298) */
 QProgressBar {
     background: #151413; border: 0; border-radius: 3px;
     min-height: 5px; max-height: 5px; text-align: center;
     color: transparent;
 }
-QProgressBar::chunk {
-    background: #d97757; border-radius: 3px;
-}
+QProgressBar::chunk { background: #d97757; border-radius: 3px; }
+QProgressBar[tone="green"]::chunk  { background: #8ab589; }
+QProgressBar[tone="amber"]::chunk { background: #d4a361; }
+QProgressBar[tone="blue"]::chunk  { background: #88a7c4; }
+QProgressBar[tone="rose"]::chunk  { background: #d88a83; }
 
-/* === StatusBar fallback === */
-QStatusBar { background: #211f1d; color: #a8a499; }
+/* === StatusBar (hidden by default — mockup uses toasts only) === */
+QStatusBar { background: #211f1d; color: #a8a499; max-height: 0; min-height: 0; }
+QStatusBar QLabel { background: transparent; }
 
 /* === Scrollbars === */
 QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }
@@ -458,6 +544,21 @@ QToolTip {
     background: #f5f4ee; color: #1a1918; border: 0;
     padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;
 }
+
+/* === Message action buttons (hover-revealed) === */
+QFrame#MsgActions { background: transparent; }
+QToolButton#MsgAction {
+    background: transparent; border: 0; border-radius: 4px;
+    padding: 4px; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px;
+}
+QToolButton#MsgAction:hover { background: rgba(255,255,255,0.08); }
+
+/* === Typing indicator === */
+QFrame#TypingDot {
+    background: #787469; border-radius: 3px;
+    min-width: 6px; max-width: 6px; min-height: 6px; max-height: 6px;
+}
+QFrame#TypingDot[active="true"] { background: #d97757; }
 """
 
 
@@ -673,6 +774,39 @@ _NAV_ICONS: dict[str, str] = {
         '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>'
         '<circle cx="12" cy="7" r="4"/></svg>'
     ),
+    "plus": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<line x1="12" y1="5" x2="12" y2="19"/>'
+        '<line x1="5" y1="12" x2="19" y2="12"/></svg>'
+    ),
+    "chevron-left": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<polyline points="15 18 9 12 15 6"/></svg>'
+    ),
+    "chevron-right": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<polyline points="9 18 15 12 9 6"/></svg>'
+    ),
+    "activity": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="1.8" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
+    ),
+    "play-circle": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="1.8" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<circle cx="12" cy="12" r="10"/>'
+        '<polygon points="10 8 16 12 10 16 10 8"/></svg>'
+    ),
+    "book": (
+        '<svg viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="1.8" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>'
+        '<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
+    ),
 }
 
 
@@ -726,6 +860,33 @@ def svg_label(parent, name: str, *, color: str = "#a8a499", size: int = 17):
     lbl.setFixedSize(size, size)
     lbl.setPixmap(svg_pixmap(name, color=color, size=size))
     return lbl
+
+
+# ---------------------------------------------------------------------------
+# Bundled Newsreader font (variable TTF, ~440 KB)
+# Loaded once at module import so every QLabel/QFont using the
+# "Newsreader" family resolves to this bundled copy on any platform
+# (Linux dev box, Windows end-user, macOS build). Without this, the
+# QSS `font-family: "Newsreader", Georgia, serif` chain falls through
+# to a generic sans on machines that don't have Newsreader installed.
+# ---------------------------------------------------------------------------
+
+def _load_bundled_fonts() -> None:
+    from pathlib import Path
+    try:
+        from PyQt6.QtGui import QFontDatabase
+        from PyQt6.QtWidgets import QApplication
+        # QApplication must exist before addApplicationFont.
+        if QApplication.instance() is None:
+            return
+        fonts_dir = Path(__file__).parent / "assets" / "fonts"
+        if not fonts_dir.is_dir():
+            return
+        for ttf in fonts_dir.glob("*.ttf"):
+            QFontDatabase.addApplicationFont(str(ttf))
+    except Exception:
+        # Font loading is best-effort — the UI must still run if it fails.
+        pass
 
 
 class GenerateRunner(QThread):
@@ -836,6 +997,13 @@ def _set_kv_row(row: QFrame, key: str, value: str, *, accent: str | None = None)
     if k: k.setText(key)
     if v:
         v.setText(value)
+        # Update the value's color inline (the dynamic property alone
+        # wouldn't override the stylesheet set in _kv_row).
+        color = {"accent": "#d97757", "green": "#8ab589", "amber": "#d4a361"}.get(accent or "", "#f5f4ee")
+        v.setStyleSheet(
+            f"color: {color}; font-weight: 500; font-size: 13px; "
+            "background: transparent; border: 0;"
+        )
         v.setProperty("role", accent)
 
 
@@ -873,11 +1041,18 @@ class TitleBar(QFrame):
 
         layout.addStretch(1)
 
-        # --- CENTER: model status ---
+        # --- CENTER: model status (with green dot indicator) ---
         self.status_model = QLabel("(sin modelo)", self)
         layout.addWidget(self.status_model)
         sep = QLabel("·", self)
         layout.addWidget(sep)
+        # green status dot (mockup L1760)
+        self.status_dot = QLabel(self)
+        self.status_dot.setObjectName("StatusDot")
+        self.status_dot.setProperty("idle", "true")
+        layout.addWidget(self.status_dot)
+        sep2 = QLabel("·", self)
+        layout.addWidget(sep2)
         self.status_backend = QLabel("", self)
         layout.addWidget(self.status_backend)
 
@@ -894,9 +1069,14 @@ class TitleBar(QFrame):
             btn.setToolTip(tooltip)
             layout.addWidget(btn)
 
-    def set_status(self, model_text: str, backend_text: str) -> None:
+    def set_status(self, model_text: str, backend_text: str,
+                   running: bool = False) -> None:
         self.status_model.setText(model_text)
         self.status_backend.setText(backend_text)
+        # Toggle the status dot color via dynamic property
+        self.status_dot.setProperty("idle", "false" if running else "true")
+        self.status_dot.style().unpolish(self.status_dot)
+        self.status_dot.style().polish(self.status_dot)
 
 
 # ---------------------------------------------------------------------------
@@ -957,7 +1137,7 @@ class _CmdItem:
     cmd: str          # "goto" | "new-chat" | "start-backend" | "stop-backend" | "run-benchmark" | "apply-model"
     label: str
     screen: str | None = None
-    icon: str = ""
+    icon: str = ""       # SVG icon name (resolved via svg_pixmap)
     shortcut: str = ""
 
 
@@ -985,9 +1165,8 @@ class CommandPalette(QDialog):
         input_row = QHBoxLayout()
         input_row.setContentsMargins(18, 14, 18, 14)
         input_row.setSpacing(10)
-        icon = QLabel("⌕", self)
-        icon.setStyleSheet("color: #a8a499; font-size: 17px;")
-        input_row.addWidget(icon)
+        search_icon = svg_label(self, "search", color="#a8a499", size=17)
+        input_row.addWidget(search_icon)
         self.input = QLineEdit(self)
         self.input.setObjectName("CmdInput")
         self.input.setPlaceholderText("Buscar pantallas, acciones…")
@@ -995,8 +1174,7 @@ class CommandPalette(QDialog):
         self.input.returnPressed.connect(self._activate_selected)
         input_row.addWidget(self.input, 1)
         esc = QLabel("ESC", self)
-        esc.setStyleSheet("color: #787469; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;"
-                          " background: #151413; border: 1px solid #34312e; border-radius: 4px; padding: 2px 6px;")
+        esc.setObjectName("CmdItemKbd")
         input_row.addWidget(esc)
         outer.addLayout(input_row)
 
@@ -1007,38 +1185,64 @@ class CommandPalette(QDialog):
         self.listw.itemClicked.connect(self._activate_item)
         outer.addWidget(self.listw, 1)
 
-        # Footer
-        footer = QLabel("↑↓ navegar · Enter ejecutar", self)
-        footer.setObjectName("CmdFooter")
-        outer.addWidget(footer)
+        # Footer (two-column row: left hint + right brand text per mockup L2348)
+        footer_row = QFrame(self)
+        footer_row.setObjectName("CmdFooterRow")
+        f_lay = QHBoxLayout(footer_row)
+        f_lay.setContentsMargins(0, 0, 0, 0)
+        f_lay.setSpacing(0)
+        footer_left = QLabel("↑↓ navegar · Enter ejecutar", footer_row)
+        footer_left.setObjectName("CmdFooter")
+        f_lay.addWidget(footer_left, 1)
+        footer_right = QLabel("ForgeMind Local · 100% offline", footer_row)
+        footer_right.setObjectName("CmdFooterRight")
+        footer_right.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        f_lay.addWidget(footer_right)
+        outer.addWidget(footer_row)
 
         self._populate()
         self.setFixedSize(560, 480)
 
     def _build_commands(self) -> None:
+        # icons are SVG names resolved via svg_pixmap (no more emoji glyphs)
         self.commands = [
-            _CmdItem("goto", "Ir a Chat", "chat", "💬", "G C"),
-            _CmdItem("goto", "Ir a Modelo y backend", "config", "⚙", "G M"),
-            _CmdItem("goto", "Ir a Rendimiento", "metrics", "📊", "G P"),
-            _CmdItem("goto", "Ir a Benchmark", "benchmark", "📈", "G B"),
-            _CmdItem("goto", "Ir a Presets", "presets", "📋", "G R"),
-            _CmdItem("goto", "Ir a GPU / Vulkan", "gpu", "🖥", "G G"),
-            _CmdItem("new-chat", "Nueva conversación", None, "✚", ""),
-            _CmdItem("start-backend", "Iniciar modelo", None, "▶", ""),
-            _CmdItem("stop-backend", "Detener modelo", None, "■", ""),
-            _CmdItem("run-benchmark", "Correr benchmark", None, "▶▶", ""),
-            _CmdItem("apply-model", "Aplicar config al backend", None, "✓", ""),
+            _CmdItem("goto", "Ir a Chat", "chat", "chat", "G C"),
+            _CmdItem("goto", "Ir a Modelo y backend", "config", "config", "G M"),
+            _CmdItem("goto", "Ir a Rendimiento", "metrics", "activity", "G P"),
+            _CmdItem("goto", "Ir a Benchmark", "benchmark", "benchmark", "G B"),
+            _CmdItem("goto", "Ir a Presets", "presets", "book", "G R"),
+            _CmdItem("goto", "Ir a GPU / Vulkan", "gpu", "gpu", "G G"),
+            _CmdItem("new-chat", "Nueva conversación", None, "plus", ""),
+            _CmdItem("start-backend", "Iniciar modelo", None, "play", ""),
+            _CmdItem("stop-backend", "Detener modelo", None, "stop", ""),
+            _CmdItem("run-benchmark", "Correr benchmark", None, "play-circle", ""),
+            _CmdItem("apply-model", "Aplicar config al backend", None, "check", ""),
         ]
 
     def _populate(self) -> None:
         self.listw.clear()
         for c in self.commands:
-            label = c.label
+            # Build a custom item widget: [SVG icon] [label] [stretch] [kbd]
+            w = QWidget(self.listw)
+            w.setObjectName("CmdItemWidget")
+            lay = QHBoxLayout(w)
+            lay.setContentsMargins(12, 6, 12, 6)
+            lay.setSpacing(11)
+            ico_lbl = svg_label(w, c.icon or "search", color="#a8a499", size=17)
+            ico_lbl.setObjectName("CmdItemIcon")
+            lay.addWidget(ico_lbl)
+            text_lbl = QLabel(c.label, w)
+            text_lbl.setObjectName("CmdItemLabel")
+            lay.addWidget(text_lbl, 1)
             if c.shortcut:
-                label += f"   {c.shortcut}"
-            item = QListWidgetItem(f"{c.icon}  {label}")
+                kbd_lbl = QLabel(c.shortcut, w)
+                kbd_lbl.setObjectName("CmdItemKbd")
+                lay.addWidget(kbd_lbl)
+            item = QListWidgetItem(self.listw)
+            item.setSizeHint(w.sizeHint())
             item.setData(Qt.ItemDataRole.UserRole, c)
             self.listw.addItem(item)
+            self.listw.setItemWidget(item, w)
         if self.listw.count():
             self.listw.setCurrentRow(0)
 
@@ -1151,19 +1355,29 @@ class Sidebar(QFrame):
         brand_box.addLayout(bcol)
         top.addLayout(brand_box, 1)
 
-        # collapse button: SVG chevron
+        # collapse button: SVG chevron-left (mockup L1788 — points LEFT when expanded)
         self.collapse_btn = QPushButton(self)
         self.collapse_btn.setObjectName("SidebarCollapse")
         self.collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.collapse_btn.setFixedSize(30, 30)
-        chev = svg_label(self.collapse_btn, "preset-dot", color="#a8a499", size=16)
-        # rotate the chevron so it points left (collapsing direction)
+        chev = svg_label(self.collapse_btn, "chevron-left", color="#a8a499", size=16)
         chev_wrap = QHBoxLayout(self.collapse_btn)
         chev_wrap.setContentsMargins(0, 0, 0, 0)
         chev_wrap.addWidget(chev, 0, Qt.AlignmentFlag.AlignCenter)
-        # store on the button so set_collapsed can flip the rotation
         self.collapse_btn._chev = chev
         top.addWidget(self.collapse_btn)
+
+        # expand button (chevron-right) — shown only when sidebar is collapsed
+        self.expand_btn = QPushButton(self)
+        self.expand_btn.setObjectName("SidebarCollapse")
+        self.expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.expand_btn.setFixedSize(30, 30)
+        exp_ico = svg_label(self.expand_btn, "chevron-right", color="#a8a499", size=16)
+        exp_lay = QHBoxLayout(self.expand_btn)
+        exp_lay.setContentsMargins(0, 0, 0, 0)
+        exp_lay.addWidget(exp_ico, 0, Qt.AlignmentFlag.AlignCenter)
+        self.expand_btn.hide()
+        top.addWidget(self.expand_btn)
         root.addLayout(top)
 
         # --- Model card ---
@@ -1211,11 +1425,13 @@ class Sidebar(QFrame):
         nc_row = QHBoxLayout(self.new_chat_btn)
         nc_row.setContentsMargins(11, 0, 11, 0)
         nc_row.setSpacing(10)
-        nc_ico = svg_label(self.new_chat_btn, "send", color="#d97757", size=14)
+        # Mockup L1819: new-chat uses a "+" plus icon (orange), not a paper-plane
+        nc_ico = svg_label(self.new_chat_btn, "plus", color="#d97757", size=14)
+        nc_ico.setObjectName("NewChatIco")
         nc_row.addWidget(nc_ico)
-        nc_lbl = QLabel("Nueva conversación", self.new_chat_btn)
-        nc_lbl.setStyleSheet("color: #f5f4ee; font-size: 13px; font-weight: 500; background: transparent; border: 0;")
-        nc_row.addWidget(nc_lbl, 1)
+        self.new_chat_lbl = QLabel("Nueva conversación", self.new_chat_btn)
+        self.new_chat_lbl.setStyleSheet("color: #f5f4ee; font-size: 13px; font-weight: 500; background: transparent; border: 0;")
+        nc_row.addWidget(self.new_chat_lbl, 1)
         body.addWidget(self.new_chat_btn)
 
         nav_label = QLabel("Workspace", self)
@@ -1310,7 +1526,7 @@ class Sidebar(QFrame):
         if collapsed:
             self.setFixedWidth(60)
             for k, b in self.nav_buttons.items():
-                # hide label and kbd
+                # hide label and kbd, center the icon
                 lbl = b.findChild(QLabel, "NavLabel")
                 kbd = b.findChild(QLabel, "NavKbd")
                 if lbl: lbl.hide()
@@ -1320,6 +1536,10 @@ class Sidebar(QFrame):
             self.findChild(QLabel, "BrandName").hide()
             self.findChild(QLabel, "BrandTag").hide()
             self.collapse_btn.hide()
+            self.expand_btn.show()
+            # collapse new-chat label too
+            if hasattr(self, "new_chat_lbl"):
+                self.new_chat_lbl.hide()
         else:
             self.setFixedWidth(260)
             for b in self.nav_buttons.values():
@@ -1332,6 +1552,9 @@ class Sidebar(QFrame):
             self.findChild(QLabel, "BrandName").show()
             self.findChild(QLabel, "BrandTag").show()
             self.collapse_btn.show()
+            self.expand_btn.hide()
+            if hasattr(self, "new_chat_lbl"):
+                self.new_chat_lbl.show()
 
     def set_model_card(self, *, name: str, quant: str, size_human: str,
                        ctx_size: int, running: bool) -> None:
@@ -1382,11 +1605,12 @@ class MetricTile(QFrame):
         self.lbl.setStyleSheet("font-size: 10.5px; font-weight: 600; letter-spacing: 1px; color: #787469;")
         lay.addWidget(self.lbl)
         self.val = QLabel("—", self)
-        f = QFont(self.val.font())
-        f.setPointSize(16)
-        f.setWeight(QFont.Weight.Medium)
-        self.val.setFont(f)
-        self.val.setStyleSheet("color: #f5f4ee; font-size: 22px; font-weight: 500;")
+        # Mockup L1256-1262: 24px Newsreader serif, weight 500, letter-spacing -0.02em
+        self.val.setStyleSheet(
+            "color: #f5f4ee; font-size: 24px; font-weight: 500; "
+            "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; letter-spacing: -0.02em; "
+            "background: transparent; border: 0;"
+        )
         lay.addWidget(self.val)
         self.bar = QProgressBar(self)
         self.bar.setRange(0, 100)
@@ -1401,7 +1625,7 @@ class MetricTile(QFrame):
 
     def set_value(self, value: str, *, unit: str = "", bar_pct: int | None = None, sub: str = "") -> None:
         if unit:
-            self.val.setText(f"{value} <span style='font-size:13px;color:#a8a499'>{unit}</span>")
+            self.val.setText(f"{value} <span style='font-size:13px;color:#a8a499;font-family:\"Inter\",sans-serif;letter-spacing:0'>{unit}</span>")
         else:
             self.val.setText(value)
         if bar_pct is not None:
@@ -1420,11 +1644,12 @@ class GPUTile(QFrame):
         self.lbl.setStyleSheet("color: #787469; font-size: 10.5px; font-weight: 600; letter-spacing: 1px;")
         lay.addWidget(self.lbl)
         self.val = QLabel("—", self)
-        f = QFont(self.val.font())
-        f.setPointSize(13)
-        f.setWeight(QFont.Weight.Medium)
-        self.val.setFont(f)
-        self.val.setStyleSheet("color: #f5f4ee; font-size: 16px; font-weight: 500;")
+        # Mockup L1500-1505: 17px Newsreader serif, weight 500
+        self.val.setStyleSheet(
+            "color: #f5f4ee; font-size: 17px; font-weight: 500; "
+            "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; "
+            "background: transparent; border: 0;"
+        )
         lay.addWidget(self.val)
         self.sub = QLabel("", self)
         self.sub.setStyleSheet("color: #a8a499; font-size: 11.5px;")
@@ -1452,13 +1677,37 @@ def _kv_row(key: str, value: str, *, accent: str | None = None) -> QFrame:
 
 
 def _h3(title: str, icon: str = "") -> QLabel:
-    h = QLabel(f"{icon}  {title}" if icon else title)
-    f = QFont(h.font())
-    f.setPointSize(11)
-    f.setWeight(QFont.Weight.Medium)
-    h.setFont(f)
-    h.setStyleSheet("color: #f5f4ee; font-size: 15px; font-weight: 500; background: transparent; border: 0;")
+    """Card title. ``icon`` may be either an emoji glyph (legacy) or a
+    recognized SVG name (resolved by the caller via _card()).
+    The label uses Newsreader serif (mockup L1012-1015)."""
+    h = QLabel(title)
+    h.setProperty("font-role", "serif")
+    h.setStyleSheet(
+        "color: #f5f4ee; font-size: 16px; font-weight: 500; "
+        "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; letter-spacing: -0.01em; "
+        "background: transparent; border: 0;"
+    )
     return h
+
+
+def _h3_with_icon(title: str, svg_name: str) -> QWidget:
+    """Card title row with a real SVG icon next to the serif headline."""
+    row = QWidget()
+    row.setStyleSheet("background: transparent; border: 0;")
+    lay = QHBoxLayout(row)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(10)
+    ico = svg_label(row, svg_name, color="#d97757", size=18)
+    ico.setStyleSheet("background: transparent; border: 0;")
+    lay.addWidget(ico, 0, Qt.AlignmentFlag.AlignVCenter)
+    h = QLabel(title)
+    h.setStyleSheet(
+        "color: #f5f4ee; font-size: 16px; font-weight: 500; "
+        "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; letter-spacing: -0.01em; "
+        "background: transparent; border: 0;"
+    )
+    lay.addWidget(h, 1, Qt.AlignmentFlag.AlignVCenter)
+    return row
 
 
 def _p(text: str, *, dim: bool = False) -> QLabel:
@@ -1466,20 +1715,55 @@ def _p(text: str, *, dim: bool = False) -> QLabel:
     p.setWordWrap(True)
     p.setStyleSheet(
         f"color: {'#a8a499' if dim else '#d8d4c8'}; font-size: 13px; background: transparent; border: 0;"
+        + (" margin-left: 28px;" if dim else "")
     )
     return p
 
 
 def _card(title: str, icon: str, desc: str = "") -> tuple[QFrame, QVBoxLayout]:
+    """Card factory. ``icon`` is an SVG name (resolved via _h3_with_icon).
+
+    Falls back to the old emoji behavior if the name is not in _NAV_ICONS.
+    """
     f = QFrame()
     f.setProperty("role", "card")
     lay = QVBoxLayout(f)
     lay.setContentsMargins(22, 22, 22, 22)
     lay.setSpacing(10)
-    lay.addWidget(_h3(title, icon))
+    if icon and icon in _NAV_ICONS:
+        lay.addWidget(_h3_with_icon(title, icon))
+    else:
+        lay.addWidget(_h3(title, icon))
     if desc:
         lay.addWidget(_p(desc, dim=True))
     return f, lay
+
+
+def _icon_button(label: str, svg_name: str, *, primary: bool = False,
+                 ghost: bool = False, danger: bool = False) -> QPushButton:
+    """Button with an SVG icon + label (replaces emoji-prefixed text)."""
+    btn = QPushButton()
+    if primary:
+        btn.setProperty("primary", True)
+    if ghost:
+        btn.setProperty("ghost", True)
+    if danger:
+        btn.setProperty("danger", True)
+    lay = QHBoxLayout(btn)
+    lay.setContentsMargins(14, 0, 14, 0)
+    lay.setSpacing(8)
+    icon_color = "#1f1e1d" if primary else ("#d88a83" if danger else "#d97757")
+    ico = svg_label(btn, svg_name, color=icon_color, size=14)
+    ico.setStyleSheet("background: transparent; border: 0;")
+    lay.addWidget(ico, 0, Qt.AlignmentFlag.AlignVCenter)
+    lbl = QLabel(label, btn)
+    lbl.setStyleSheet(
+        f"color: {'#1f1e1d' if primary else '#f5f4ee'}; "
+        "font-size: 13px; font-weight: 500; background: transparent; border: 0;"
+    )
+    lay.addWidget(lbl, 1, Qt.AlignmentFlag.AlignVCenter)
+    lay.addStretch(1)
+    return btn
 
 
 # ---------------------------------------------------------------------------
@@ -1507,18 +1791,39 @@ class ChatScreen(QWidget):
 
         self.msgs_container = QWidget()
         self.msgs_container.setObjectName("MessagesContainer")
+        # Wrap messages in a centered container so we can cap the max-width
+        # to 820px (mockup L636) on wide screens.
         self.msgs_layout = QVBoxLayout(self.msgs_container)
         self.msgs_layout.setContentsMargins(24, 24, 24, 16)
         self.msgs_layout.setSpacing(22)
         self.msgs_layout.addStretch(1)
         self.scroll.setWidget(self.msgs_container)
+        # Center the messages container with a horizontal stretch on each side
+        # so the content stays capped at ~820px even when the window is wide.
+        scroll_outer = QHBoxLayout()
+        scroll_outer.setContentsMargins(0, 0, 0, 0)
+        scroll_outer.setSpacing(0)
+        scroll_outer.addStretch(1)
+        scroll_outer.addWidget(self.scroll, 0)
+        scroll_outer.addStretch(1)
+        # We can't easily add a stretch around a QScrollArea that owns its
+        # own widget — instead, cap the scroll's max width and let the
+        # parent layout center it.
+        self.scroll.setMaximumWidth(820)
+        self.scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root.addWidget(self.scroll, 1)
 
-        # --- Composer ---
+        # --- Composer (also capped at 820px) ---
+        composer_outer = QHBoxLayout()
+        composer_outer.setContentsMargins(0, 0, 0, 0)
+        composer_outer.setSpacing(0)
+        composer_outer.addStretch(1)
         composer_wrap = QFrame(self)
+        composer_wrap.setMaximumWidth(820)
         composer_wrap.setStyleSheet("background: transparent; border: 0;")
+        composer_wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         cw_lay = QVBoxLayout(composer_wrap)
-        cw_lay.setContentsMargins(24, 8, 24, 16)
+        cw_lay.setContentsMargins(0, 8, 0, 16)
         cw_lay.setSpacing(8)
 
         comp = QFrame(composer_wrap)
@@ -1526,9 +1831,11 @@ class ChatScreen(QWidget):
         comp_lay = QVBoxLayout(comp)
         comp_lay.setContentsMargins(12, 10, 12, 8)
         comp_lay.setSpacing(4)
+        self._composer_frame = comp
         self.edit = QPlainTextEdit(comp)
         self.edit.setObjectName("ComposerEdit")
         self.edit.setPlaceholderText("Escribí tu prompt… (Enter para enviar)")
+        # Auto-grow: min 56, max 200 — set via _on_text_changed
         self.edit.setFixedHeight(56)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -1581,12 +1888,29 @@ class ChatScreen(QWidget):
         comp_lay.addLayout(bar)
         cw_lay.addWidget(comp)
 
-        # Hint
-        hint = QLabel("Enter enviar · Shift+Enter nueva línea · Ctrl+K comandos", self)
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet("color: #787469; font-size: 11px; background: transparent; border: 0;")
-        cw_lay.addWidget(hint)
-        root.addWidget(composer_wrap)
+        # Hint — kbd-styled chips (mockup L924-934)
+        hint_row = QHBoxLayout()
+        hint_row.setContentsMargins(0, 0, 0, 0)
+        hint_row.setSpacing(6)
+        hint_row.addStretch(1)
+        for k, t in [("Enter", "enviar"),
+                     ("Shift+Enter", "nueva línea"),
+                     ("Ctrl+K", "comandos")]:
+            kbd = QLabel(k, self)
+            kbd.setStyleSheet(
+                "color: #787469; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; "
+                "background: #151413; border: 1px solid #34312e; border-radius: 4px; "
+                "padding: 1px 5px;"
+            )
+            hint_row.addWidget(kbd)
+            txt = QLabel(t, self)
+            txt.setStyleSheet("color: #787469; font-size: 11px; background: transparent; border: 0;")
+            hint_row.addWidget(txt)
+        hint_row.addStretch(1)
+        cw_lay.addLayout(hint_row)
+        composer_outer.addWidget(composer_wrap, 0)
+        composer_outer.addStretch(1)
+        root.addLayout(composer_outer)
 
         # Seed the initial greeting (matches mockup exactly).
         self._add_message(
@@ -1651,6 +1975,16 @@ class ChatScreen(QWidget):
         meta = self._messages_dom[-1]
         meta["body"] = (meta.get("body") or "") + chunk
         body_lbl: QLabel = meta["body_label"]
+        bubble = meta.get("bubble")
+        # On first chunk: hide the typing indicator and reveal the body label
+        if bubble is not None and getattr(bubble, "_typing", None) is not None:
+            typing = bubble._typing
+            if hasattr(typing, "_dot_timer"):
+                typing._dot_timer.stop()
+            typing.hide()
+            typing.deleteLater()
+            bubble._typing = None
+            body_lbl.show()
         body_lbl.setText(meta["body"])
         QApplication.processEvents()
         self._scroll_to_bottom()
@@ -1696,10 +2030,14 @@ class ChatScreen(QWidget):
         al = QVBoxLayout(avatar)
         al.setContentsMargins(0, 0, 0, 0)
         al.setSpacing(0)
-        a_lbl = QLabel("U" if role == "user" else "F", avatar)
+        # Avatar SVG icon (mockup L1891, L2508): user = person, ai = checkmark-doc
+        av_icon_name = "user" if role == "user" else "ai"
+        av_color = "#d8d4c8" if role == "user" else "#1f1e1d"
+        a_lbl = svg_label(avatar, av_icon_name, color=av_color, size=15)
         a_lbl.setObjectName("MsgAvatarLabel")
         a_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        al.addWidget(a_lbl)
+        a_lbl.setStyleSheet("background: transparent; border: 0;")
+        al.addWidget(a_lbl, 0, Qt.AlignmentFlag.AlignCenter)
         blay.addWidget(avatar)
 
         content = QFrame(bubble)
@@ -1708,7 +2046,7 @@ class ChatScreen(QWidget):
         clay.setContentsMargins(0, 2, 0, 0)
         clay.setSpacing(4)
 
-        # name row
+        # name row (with optional preset pill on the right + action buttons)
         name_row = QHBoxLayout()
         name_row.setSpacing(8)
         n = QLabel(name, content)
@@ -1719,15 +2057,83 @@ class ChatScreen(QWidget):
             mp.setObjectName("MsgPreset")
             name_row.addWidget(mp)
         name_row.addStretch(1)
+        # Message action buttons (mockup L1911-1914, L2555-2558): copy + regenerate
+        actions = QFrame(content)
+        actions.setObjectName("MsgActions")
+        actions.setStyleSheet("background: transparent; border: 0;")
+        actions_lay = QHBoxLayout(actions)
+        actions_lay.setContentsMargins(0, 0, 0, 0)
+        actions_lay.setSpacing(2)
+        copy_btn = QToolButton(actions)
+        copy_btn.setObjectName("MsgAction")
+        copy_btn.setIcon(svg_icon("copy", color="#a8a499", size=14))
+        copy_btn.setIconSize(QSize(14, 14))
+        copy_btn.setToolTip("Copiar respuesta")
+        actions_lay.addWidget(copy_btn)
+        if role == "ai":
+            regen_btn = QToolButton(actions)
+            regen_btn.setObjectName("MsgAction")
+            regen_btn.setIcon(svg_icon("regen", color="#a8a499", size=14))
+            regen_btn.setIconSize(QSize(14, 14))
+            regen_btn.setToolTip("Regenerar respuesta")
+            actions_lay.addWidget(regen_btn)
+            regen_btn.clicked.connect(lambda: self._on_regen_action(bubble))
+        copy_btn.clicked.connect(lambda: self._on_copy_action(bubble))
+        # Hover-reveal: hide by default, show on bubble enter
+        actions.setVisible(False)
+        bubble._actions = actions
+        # Override enter/leave on the bubble to toggle visibility
+        _orig_enter = bubble.enterEvent
+        _orig_leave = bubble.leaveEvent
+        def _enter(ev):
+            actions.setVisible(True)
+            if _orig_enter: _orig_enter(ev)
+        def _leave(ev):
+            actions.setVisible(False)
+            if _orig_leave: _orig_leave(ev)
+        bubble.enterEvent = _enter
+        bubble.leaveEvent = _leave
+        name_row.addWidget(actions)
         clay.addLayout(name_row)
 
-        # body
-        body_lbl = QLabel(body_html or "<span style='color:#787469'>…</span>", content)
-        body_lbl.setObjectName("MsgBody")
-        body_lbl.setWordWrap(True)
-        body_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        body_lbl.setTextFormat(Qt.TextFormat.RichText)
-        clay.addWidget(body_lbl)
+        # body — for AI streaming with no body yet, show typing indicator
+        if role == "ai" and not body_html:
+            body_lbl = QLabel("", content)
+            body_lbl.setObjectName("MsgBody")
+            body_lbl.setWordWrap(True)
+            body_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            body_lbl.setTextFormat(Qt.TextFormat.RichText)
+            # Build typing indicator (3 dots) as the bubble content until first chunk
+            typing = QFrame(content)
+            typing.setObjectName("TypingIndicator")
+            typing_lay = QHBoxLayout(typing)
+            typing_lay.setContentsMargins(0, 0, 0, 0)
+            typing_lay.setSpacing(4)
+            dots = []
+            for _ in range(3):
+                d = QFrame(typing)
+                d.setObjectName("TypingDot")
+                d.setFixedSize(6, 6)
+                typing_lay.addWidget(d)
+                dots.append(d)
+            typing._dots = dots
+            typing._dot_idx = 0
+            typing._dot_timer = QTimer(typing)
+            typing._dot_timer.timeout.connect(lambda: self._tick_typing(typing))
+            typing._dot_timer.start(380)
+            # Replace the body label with the typing widget visually
+            clay.addWidget(typing)
+            clay.addWidget(body_lbl)
+            body_lbl.hide()
+            bubble._typing = typing
+        else:
+            body_lbl = QLabel(body_html or "<span style='color:#787469'>…</span>", content)
+            body_lbl.setObjectName("MsgBody")
+            body_lbl.setWordWrap(True)
+            body_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            body_lbl.setTextFormat(Qt.TextFormat.RichText)
+            clay.addWidget(body_lbl)
+            bubble._typing = None
 
         # meta (only for AI)
         meta_lbl = QLabel("", content)
@@ -1749,8 +2155,39 @@ class ChatScreen(QWidget):
             "body": body_html,
             "body_label": body_lbl,
             "meta_label": meta_lbl,
+            "bubble": bubble,
         })
         self._scroll_to_bottom()
+
+    def _tick_typing(self, typing: QFrame) -> None:
+        """Advance the typing indicator: highlight one dot at a time."""
+        dots = getattr(typing, "_dots", None) or []
+        if not dots:
+            return
+        idx = getattr(typing, "_dot_idx", 0)
+        for i, d in enumerate(dots):
+            d.setProperty("active", "true" if i == idx else "false")
+            d.style().unpolish(d)
+            d.style().polish(d)
+        typing._dot_idx = (idx + 1) % len(dots)
+
+    def _on_copy_action(self, bubble: QFrame) -> None:
+        """Copy the body text of the given bubble to the clipboard."""
+        # find the body label
+        body_lbl = bubble.findChild(QLabel, "MsgBody")
+        if body_lbl is None:
+            return
+        text = body_lbl.text()
+        # strip HTML tags for clipboard
+        import re
+        plain = re.sub(r"<[^>]+>", "", text)
+        QApplication.clipboard().setText(plain)
+
+    def _on_regen_action(self, bubble: QFrame) -> None:
+        """Trigger a regenerate of the last user prompt."""
+        win = self.window()
+        if win is not None and hasattr(win, "_on_regen_last"):
+            win._on_regen_last(bubble)
 
     def _scroll_to_bottom(self) -> None:
         QApplication.processEvents()
@@ -1779,7 +2216,7 @@ class ConfigScreen(QWidget):
         root.setSpacing(16)
 
         # --- Card 1: Modelo GGUF ---
-        card_model, m_lay = _card("Modelo GGUF", "📦",
+        card_model, m_lay = _card("Modelo GGUF", "package",
                                    "Seleccioná el archivo .gguf y los parámetros de inferencia.")
         form1 = QGridLayout()
         form1.setHorizontalSpacing(16)
@@ -1816,38 +2253,40 @@ class ConfigScreen(QWidget):
         self.sb_max = QSpinBox(); self.sb_max.setRange(16, 8192); self.sb_max.setValue(512); self.sb_max.setSingleStep(32)
         form1.addWidget(self.sb_max, 6, 1)
 
-        # Sliders row: temp / top_p / repeat penalty
-        form1.addWidget(_make_field_label("Temperatura"), 7, 0)
+        # Sliders row: temp / top_p / repeat penalty (with inline accent value + value box)
+        self.lbl_temp_field = _make_field_label("Temperatura")
+        form1.addWidget(self.lbl_temp_field, 7, 0)
         temp_row = QHBoxLayout()
         self.slider_temp = QSlider(Qt.Orientation.Horizontal); self.slider_temp.setRange(0, 200); self.slider_temp.setValue(70)
         self.lbl_temp_val = QLabel("0.70")
-        self.lbl_temp_val.setStyleSheet("color: #d97757; font-family: 'JetBrains Mono', monospace; font-size: 12px; background: transparent; border: 0;")
+        self.lbl_temp_val.setObjectName("SliderValue")
         temp_row.addWidget(self.slider_temp, 1)
         temp_row.addWidget(self.lbl_temp_val)
         form1.addLayout(temp_row, 7, 1)
 
-        form1.addWidget(_make_field_label("Top-p"), 8, 0)
+        self.lbl_topp_field = _make_field_label("Top-p")
+        form1.addWidget(self.lbl_topp_field, 8, 0)
         topp_row = QHBoxLayout()
         self.slider_topp = QSlider(Qt.Orientation.Horizontal); self.slider_topp.setRange(0, 100); self.slider_topp.setValue(95)
         self.lbl_topp_val = QLabel("0.95")
-        self.lbl_topp_val.setStyleSheet("color: #d97757; font-family: 'JetBrains Mono', monospace; font-size: 12px; background: transparent; border: 0;")
+        self.lbl_topp_val.setObjectName("SliderValue")
         topp_row.addWidget(self.slider_topp, 1)
         topp_row.addWidget(self.lbl_topp_val)
         form1.addLayout(topp_row, 8, 1)
 
-        form1.addWidget(_make_field_label("Repeat penalty"), 9, 0)
+        self.lbl_rep_field = _make_field_label("Repeat penalty")
+        form1.addWidget(self.lbl_rep_field, 9, 0)
         rep_row = QHBoxLayout()
         self.slider_rep = QSlider(Qt.Orientation.Horizontal); self.slider_rep.setRange(50, 200); self.slider_rep.setValue(110)
         self.lbl_rep_val = QLabel("1.10")
-        self.lbl_rep_val.setStyleSheet("color: #d97757; font-family: 'JetBrains Mono', monospace; font-size: 12px; background: transparent; border: 0;")
+        self.lbl_rep_val.setObjectName("SliderValue")
         rep_row.addWidget(self.slider_rep, 1)
         rep_row.addWidget(self.lbl_rep_val)
         form1.addLayout(rep_row, 9, 1)
         m_lay.addLayout(form1)
 
         apply_row = QHBoxLayout()
-        self.btn_apply_model = QPushButton("✓  Aplicar config al backend")
-        self.btn_apply_model.setProperty("primary", True)
+        self.btn_apply_model = _icon_button("Aplicar config al backend", "check", primary=True)
         apply_row.addWidget(self.btn_apply_model)
         self.btn_refresh_info = QPushButton("Refrescar info")
         self.btn_refresh_info.setProperty("ghost", True)
@@ -1858,14 +2297,22 @@ class ConfigScreen(QWidget):
         root.addWidget(card_model)
 
         # --- Card 2: Backend ---
-        card_be, b_lay = _card("Backend", "🖥",
-                                "Elegí cómo correr el modelo. Recomendado: llama-cli.")
+        card_be, b_lay = _card("Backend", "monitor",
+                                "Elegí cómo correr el modelo. Recomendado: <code>llama-cli</code>.")
         form2 = QGridLayout()
         form2.setHorizontalSpacing(16)
         form2.setVerticalSpacing(12)
         form2.addWidget(_make_field_label("Tipo de backend"), 0, 0, 1, 2)
         self.cmb_backend_kind = QComboBox()
-        self.cmb_backend_kind.addItems(["llama_cli", "llama_server", "llama_cpp", "ollama"])
+        # Mockup L2033-2038: descriptive labels (keep the bare key as item data
+        # so the existing logic still works).
+        for key, desc in [
+            ("llama_cli",   "llama-cli (subprocess, default)"),
+            ("llama_server","llama-server (HTTP local)"),
+            ("llama_cpp",   "llama-cpp binding Python"),
+            ("ollama",      "ollama (servicio externo)"),
+        ]:
+            self.cmb_backend_kind.addItem(desc, key)
         form2.addWidget(self.cmb_backend_kind, 1, 0, 1, 2)
         form2.addWidget(_make_field_label("llama-cli path"), 2, 0)
         self.in_llama_cli = QLineEdit()
@@ -1897,39 +2344,78 @@ class ConfigScreen(QWidget):
         b_lay.addLayout(form2)
 
         be_row = QHBoxLayout()
-        self.btn_test_backend = QPushButton("🧪 Probar backend")
+        self.btn_test_backend = _icon_button("Probar backend", "search-lg")
         be_row.addWidget(self.btn_test_backend)
-        self.btn_start_backend = QPushButton("▶  Iniciar modelo")
-        self.btn_start_backend.setProperty("primary", True)
+        self.btn_start_backend = _icon_button("Iniciar modelo", "play", primary=True)
         be_row.addWidget(self.btn_start_backend)
-        self.btn_stop_backend = QPushButton("■  Detener")
-        self.btn_stop_backend.setProperty("danger", True)
+        self.btn_stop_backend = _icon_button("Detener", "stop", danger=True)
         be_row.addWidget(self.btn_stop_backend)
         be_row.addStretch(1)
         b_lay.addLayout(be_row)
         root.addWidget(card_be)
 
         # --- Card 3: Log console ---
-        card_log, l_lay = _card("Log del backend", "📋", "")
-        self.log_console = QPlainTextEdit()
+        card_log, l_lay = _card("Log del backend", "doc", "")
+        self.log_console = QTextBrowser()
         self.log_console.setObjectName("LogConsole")
+        self.log_console.setOpenExternalLinks(False)
         self.log_console.setReadOnly(True)
-        self.log_console.setMaximumBlockCount(2000)
+        # QTextBrowser has no MaximumBlockCount; cap via documentMaximumBlockCount
+        try:
+            self.log_console.document().setMaximumBlockCount(2000)
+        except Exception:
+            pass
         l_lay.addWidget(self.log_console)
         root.addWidget(card_log, 1)
 
-        # wire sliders to labels
-        self.slider_temp.valueChanged.connect(lambda v: self.lbl_temp_val.setText(f"{v/100:.2f}"))
-        self.slider_topp.valueChanged.connect(lambda v: self.lbl_topp_val.setText(f"{v/100:.2f}"))
-        self.slider_rep.valueChanged.connect(lambda v: self.lbl_rep_val.setText(f"{v/100:.2f}"))
+        # wire sliders to value labels (both inline field label + value box)
+        self.slider_temp.valueChanged.connect(lambda v: self._on_slider_changed("temp", v))
+        self.slider_topp.valueChanged.connect(lambda v: self._on_slider_changed("topp", v))
+        self.slider_rep.valueChanged.connect(lambda v: self._on_slider_changed("rep", v))
+        # initial sync
+        self._on_slider_changed("temp", self.slider_temp.value())
+        self._on_slider_changed("topp", self.slider_topp.value())
+        self._on_slider_changed("rep", self.slider_rep.value())
 
     # ---- helpers ----
 
-    def log(self, msg: str) -> None:
+    def _on_slider_changed(self, which: str, v: int) -> None:
+        # Field labels are UPPERCASE per mockup (Qt QSS doesn't support text-transform).
+        if which == "temp":
+            val = f"{v/100:.2f}"
+            self.lbl_temp_val.setText(val)
+            self.lbl_temp_field.setText(f"TEMPERATURA  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
+        elif which == "topp":
+            val = f"{v/100:.2f}"
+            self.lbl_topp_val.setText(val)
+            self.lbl_topp_field.setText(f"TOP-P  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
+        elif which == "rep":
+            val = f"{v/100:.2f}"
+            self.lbl_rep_val.setText(val)
+            self.lbl_rep_field.setText(f"REPEAT PENALTY  ·  <span style='color:#d97757;font-family:\"JetBrains Mono\",monospace;font-weight:500'>{val}</span>")
+
+    def log(self, msg: str, *, level: str = "info") -> None:
+        """Append a log line. ``level`` is one of: info / ok / warn / err.
+
+        Color codes per mockup L1322-1340.
+        """
         ts = time.strftime("%H:%M:%S")
-        self.log_console.appendPlainText(f"[{ts}] {msg}")
+        color = {
+            "info": "#a8a499",
+            "ok":   "#8ab589",
+            "warn": "#d4a361",
+            "err":  "#d88a83",
+        }.get(level, "#a8a499")
+        # QTextBrowser accepts HTML
+        line = (
+            f"<span style='color:#787469'>[{ts}]</span> "
+            f"<span style='color:{color}'>{_html_escape(msg)}</span>"
+        )
+        self.log_console.append(line)
 
     def gather_model_config(self) -> ModelConfig:
+        # backend_kind comes from the combo's user data (the bare key)
+        backend_kind = self.cmb_backend_kind.currentData() or "llama_cli"
         return ModelConfig(
             name=self.in_name.text().strip() or "modelo-sin-nombre",
             gguf_path=self.in_gguf_path.text().strip(),
@@ -1941,7 +2427,7 @@ class ConfigScreen(QWidget):
             repeat_penalty=float(self.slider_rep.value()) / 100,
             mode=self.cmb_mode.currentText(),
             gpu_layers=int(self.sb_gpu_layers.value()),
-            backend_kind=self.cmb_backend_kind.currentText(),
+            backend_kind=backend_kind,
             llama_cli_path=self.in_llama_cli.text().strip(),
             llama_server_path=self.in_llama_server.text().strip(),
             ollama_url=self.in_ollama_url.text().strip() or DEFAULT_OLLAMA_URL,
@@ -1958,7 +2444,11 @@ class ConfigScreen(QWidget):
         self.slider_rep.setValue(int(cfg.repeat_penalty * 100))
         self.cmb_mode.setCurrentText(cfg.mode)
         self.sb_gpu_layers.setValue(cfg.gpu_layers)
-        self.cmb_backend_kind.setCurrentText(cfg.backend_kind)
+        # find the combo index whose data matches cfg.backend_kind
+        for i in range(self.cmb_backend_kind.count()):
+            if self.cmb_backend_kind.itemData(i) == cfg.backend_kind:
+                self.cmb_backend_kind.setCurrentIndex(i)
+                break
         self.in_llama_cli.setText(cfg.llama_cli_path)
         self.in_llama_server.setText(cfg.llama_server_path)
         self.in_ollama_url.setText(cfg.ollama_url or DEFAULT_OLLAMA_URL)
@@ -1975,8 +2465,13 @@ class ConfigScreen(QWidget):
 
 
 def _make_field_label(text: str) -> QLabel:
+    # Mockup L1055-1059: field-label uses `text-transform: uppercase`.
+    # Qt QSS does NOT support text-transform, so we uppercase in Python.
     l = QLabel(text.upper())
-    l.setStyleSheet("color: #a8a499; font-size: 11px; font-weight: 600; letter-spacing: 1px; background: transparent; border: 0;")
+    l.setStyleSheet(
+        "color: #a8a499; font-size: 11.5px; font-weight: 500; "
+        "letter-spacing: 0.06em; background: transparent; border: 0;"
+    )
     return l
 
 
@@ -1991,28 +2486,34 @@ class MetricsScreen(QWidget):
         root.setContentsMargins(28, 28, 28, 48)
         root.setSpacing(16)
 
-        card, lay = _card("Rendimiento en vivo", "📊",
+        card, lay = _card("Rendimiento en vivo", "activity",
                           "Métricas del backend activo y del sistema. Click en Refrescar para actualizar.")
         self.tiles_row = QHBoxLayout()
         self.tiles_row.setSpacing(12)
         self.tile_rss = MetricTile("RSS proceso")
+        self.tile_rss.bar.setProperty("tone", "amber")
         self.tile_tps = MetricTile("Tokens/s")
+        self.tile_tps.bar.setProperty("tone", "green")
         self.tile_first = MetricTile("1er token")
+        self.tile_first.bar.setProperty("tone", "blue")
         self.tile_ram = MetricTile("RAM disponible")
+        self.tile_ram.bar.setProperty("tone", "amber")
         for t in (self.tile_rss, self.tile_tps, self.tile_first, self.tile_ram):
+            # Re-polish so tone::chunk applies
+            t.bar.style().unpolish(t.bar)
+            t.bar.style().polish(t.bar)
             self.tiles_row.addWidget(t, 1)
         lay.addLayout(self.tiles_row)
 
         btn_row = QHBoxLayout()
-        self.btn_refresh = QPushButton("↻  Refrescar ahora")
-        self.btn_refresh.setProperty("primary", True)
+        self.btn_refresh = _icon_button("Refrescar ahora", "refresh", primary=True)
         btn_row.addWidget(self.btn_refresh)
         btn_row.addStretch(1)
         lay.addLayout(btn_row)
         root.addWidget(card)
 
         # KV list card
-        kv_card, kv_lay = _card("Detalle de la última corrida", "🔍", "")
+        kv_card, kv_lay = _card("Detalle de la última corrida", "search-lg", "")
         self.kv_rows: list[QFrame] = []
         for _ in range(8):
             row = _kv_row("?", "?")
@@ -2066,7 +2567,7 @@ class BenchmarkScreen(QWidget):
         root.setSpacing(16)
 
         # Card 1: run benchmark
-        card, lay = _card("Benchmark local", "📈",
+        card, lay = _card("Benchmark local", "benchmark",
                           "10 prompts fijos en español. Mismos prompts → misma base para comparar modelos.")
         form = QGridLayout()
         form.setHorizontalSpacing(16)
@@ -2080,38 +2581,43 @@ class BenchmarkScreen(QWidget):
         lay.addLayout(form)
 
         run_row = QHBoxLayout()
-        self.btn_run = QPushButton("▶  Correr benchmark")
-        self.btn_run.setProperty("primary", True)
+        self.btn_run = _icon_button("Correr benchmark", "play", primary=True)
         run_row.addWidget(self.btn_run)
-        self.btn_open = QPushButton("📂 Abrir carpeta resultados")
+        self.btn_open = _icon_button("Abrir carpeta resultados", "folder", ghost=True)
         run_row.addWidget(self.btn_open)
         run_row.addStretch(1)
         lay.addLayout(run_row)
         root.addWidget(card)
 
         # Card 2: History + detail
-        hist_card, hist_lay = _card("Historial y comparativa", "📊",
+        hist_card, hist_lay = _card("Historial y comparativa", "list",
                                      "Ctrl+click para seleccionar 2 o más corridas y comparar.")
-        # header row
+        # header row (mockup L2197-2201): "Corridas" label + refresh icon-btn on same row)
         header_row = QHBoxLayout()
+        runs_header = QLabel("Corridas")
+        runs_header.setStyleSheet("color: #a8a499; font-size: 11.5px; font-weight: 600; background: transparent; border: 0;")
+        header_row.addWidget(runs_header)
         header_row.addStretch(1)
-        self.btn_refresh_runs = QPushButton("↻")
+        self.btn_refresh_runs = QPushButton(hist_card)
         self.btn_refresh_runs.setObjectName("ToolBtn")
+        self.btn_refresh_runs.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_refresh_runs.setFixedSize(30, 30)
+        ref_lay = QHBoxLayout(self.btn_refresh_runs)
+        ref_lay.setContentsMargins(0, 0, 0, 0)
+        ref_lay.addWidget(svg_label(self.btn_refresh_runs, "refresh", color="#a8a499", size=15),
+                          0, Qt.AlignmentFlag.AlignCenter)
         header_row.addWidget(self.btn_refresh_runs)
         hist_lay.addLayout(header_row)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        # left: list of runs
+        # left: list of runs (object name set so the QSS item:selected with left-bar applies)
         self.runs_widget = QFrame()
         self.runs_widget.setStyleSheet("background: #282623; border: 1px solid #34312e; border-radius: 10px;")
         runs_lay = QVBoxLayout(self.runs_widget)
         runs_lay.setContentsMargins(0, 0, 0, 0)
         runs_lay.setSpacing(0)
-        runs_header = QLabel("Corridas")
-        runs_header.setStyleSheet("color: #a8a499; font-size: 11.5px; font-weight: 600; padding: 10px 12px; background: transparent; border-bottom: 1px solid #34312e;")
-        runs_lay.addWidget(runs_header)
         self.runs_list = QListWidget()
-        self.runs_list.setStyleSheet("background: transparent; border: none; outline: 0;")
+        self.runs_list.setObjectName("RunsList")
         self.runs_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.runs_list.itemSelectionChanged.connect(self._on_selection_changed)
         self.runs_list.itemDoubleClicked.connect(self._on_run_double_clicked)
@@ -2125,16 +2631,45 @@ class BenchmarkScreen(QWidget):
         detail_lay.setContentsMargins(18, 14, 18, 14)
         detail_lay.setSpacing(10)
         self.detail_title = QLabel("Selecciona una corrida")
-        self.detail_title.setStyleSheet("color: #f5f4ee; font-size: 15px; font-weight: 500; background: transparent; border: 0;")
+        # Mockup L1404-1405: 15px Newsreader serif headline
+        self.detail_title.setStyleSheet(
+            "color: #f5f4ee; font-size: 15px; font-weight: 500; "
+            "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; letter-spacing: -0.01em; "
+            "background: transparent; border: 0;"
+        )
         detail_lay.addWidget(self.detail_title)
-        self.detail_table = QTextEdit()
-        self.detail_table.setReadOnly(True)
-        self.detail_table.setStyleSheet("background: transparent; border: none; color: #d8d4c8; font-family: 'JetBrains Mono', monospace; font-size: 12px;")
+        # Mockup L1395-1428: styled compare-table via QTableWidget
+        self.detail_table = QTableWidget()
+        self.detail_table.setColumnCount(5)
+        self.detail_table.setHorizontalHeaderLabels(["#", "Título", "elapsed (s)", "t/s (proxy)", "chars"])
+        self.detail_table.horizontalHeader().setStretchLastSection(False)
+        self.detail_table.horizontalHeader().setDefaultSectionSize(120)
+        self.detail_table.verticalHeader().setVisible(False)
+        self.detail_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.detail_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.detail_table.setAlternatingRowColors(False)
+        self.detail_table.setShowGrid(False)
+        self.detail_table.setStyleSheet(
+            """
+            QTableWidget {
+                background: transparent; border: 0; color: #d8d4c8;
+                font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px;
+            }
+            QTableWidget::item { padding: 6px 8px; border-bottom: 1px solid #34312e; }
+            QTableWidget::item:hover { background: rgba(255,255,255,0.045); }
+            QHeaderView::section {
+                color: #a8a499; font-family: 'Inter', sans-serif; font-size: 11.5px;
+                font-weight: 600; padding: 6px 8px; background: transparent; border: 0;
+                border-bottom: 1px solid #34312e; text-transform: uppercase;
+            }
+            QTableWidget::item[winner="true"] { color: #8ab589; font-weight: 600; }
+            """
+        )
         detail_lay.addWidget(self.detail_table, 1)
         cmp_row = QHBoxLayout()
-        self.btn_compare = QPushButton("⇄  Comparar seleccionados")
+        self.btn_compare = _icon_button("Comparar seleccionados", "compare")
         cmp_row.addWidget(self.btn_compare)
-        self.btn_save_compare = QPushButton("💾 Guardar comparación")
+        self.btn_save_compare = _icon_button("Guardar comparación", "save", ghost=True)
         self.btn_save_compare.setEnabled(False)
         cmp_row.addWidget(self.btn_save_compare)
         cmp_row.addStretch(1)
@@ -2153,41 +2688,70 @@ class BenchmarkScreen(QWidget):
                 self._show_run_detail(path)
         else:
             self.detail_title.setText(f"{len(items)} corridas seleccionadas")
-            self.detail_table.clear()
+            self.detail_table.setRowCount(0)
 
     def _on_run_double_clicked(self, item: QListWidgetItem) -> None:
         path = item.data(1)
         if path:
             self._show_run_detail(path)
 
+    def _populate_table(self, rows: list[tuple[str, str, str, str]],
+                        *, title: str, highlight_best_tps: bool = False) -> None:
+        """Populate the compare-table with the given rows.
+
+        Each row = (idx, title, elapsed, tps, chars). When ``highlight_best_tps``
+        is True, the row with the highest t/s is marked as winner (green).
+        """
+        self.detail_title.setText(title)
+        self.detail_table.setRowCount(len(rows))
+        best_idx = -1
+        if highlight_best_tps and rows:
+            best_val = -1.0
+            for i, (_, _, _, tps, _) in enumerate(rows):
+                try:
+                    v = float(tps)
+                    if v > best_val:
+                        best_val = v
+                        best_idx = i
+                except (ValueError, TypeError):
+                    pass
+        for i, (idx, t, elapsed, tps, chars) in enumerate(rows):
+            cells = [idx, t, str(elapsed), str(tps), str(chars)]
+            for col, txt in enumerate(cells):
+                item = QTableWidgetItem(txt)
+                if col == 0:
+                    item.setForeground(QColor("#787469"))
+                if col in (2, 3, 4):
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if highlight_best_tps and i == best_idx:
+                    item.setData(Qt.ItemDataRole.UserRole, "winner")
+                    # apply the winner attribute via style (Qt item property)
+                self.detail_table.setItem(i, col, item)
+        self.detail_table.resizeColumnsToContents()
+        if self.detail_table.columnWidth(1) > 320:
+            self.detail_table.setColumnWidth(1, 320)
+
     def _show_run_detail(self, path: str) -> None:
         run = load_run(path) if path else None
         if not run:
-            self.detail_table.setPlainText("(no se pudo cargar)")
+            self.detail_table.setRowCount(1)
+            self.detail_table.setItem(0, 0, QTableWidgetItem("(no se pudo cargar)"))
             return
         be = run.get("backend") or {}
         cfg = be.get("config") or {}
         items = run.get("items") or []
-        lines = [
-            f"Run: {run.get('label')}  ({run.get('timestamp')})",
-            f"Backend: {be.get('backend')}  mock={be.get('mock')}",
-            f"Modelo: {cfg.get('name')}  Cuant: {cfg.get('quant') or '?'}  Tamaño: {cfg.get('size_human')}",
-            f"Modo: {cfg.get('mode')}  GPU layers: {cfg.get('gpu_layers')}  Ctx: {cfg.get('ctx_size')}  Threads: {cfg.get('threads')}",
-            f"Wall time: {(run.get('totals') or {}).get('wall_time_sec')} s",
-            f"Prompts corridos: {len(items)}",
-            "",
-            "| # | Título | elapsed (s) | t/s (proxy) | chars |",
-            "|---|--------|------------:|------------:|------:|",
-        ]
+        rows = []
         for i, it in enumerate(items, 1):
             m = it.get("metrics") or {}
             tps = m.get("tokens_per_sec_proxy")
             tps_s = f"{tps:.2f}" if isinstance(tps, (int, float)) else "-"
-            lines.append(f"| {i} | {it.get('title')} | {m.get('elapsed_sec')} | {tps_s} | {m.get('char_count')} |")
-        lines.append("")
-        lines.append(f"Path: {path}")
-        self.detail_title.setText(f"{run.get('label')} · {run.get('timestamp','')[:16]}")
-        self.detail_table.setPlainText("\n".join(lines))
+            rows.append((str(i), it.get("title") or "", m.get("elapsed_sec") or "-", tps_s, m.get("char_count") or "-"))
+        title = f"{run.get('label')} · {run.get('timestamp','')[:16]}"
+        # Show summary line as a one-row above the table is not trivial with
+        # QTableWidget — instead we encode the metadata in the title.
+        wall = (run.get("totals") or {}).get("wall_time_sec")
+        sub = f"  ·  wall {wall}s · backend {be.get('backend')}"
+        self._populate_table(rows, title=title + sub)
 
     def _reload_runs(self, results_dir: str) -> None:
         self.runs_list.clear()
@@ -2219,12 +2783,38 @@ class BenchmarkScreen(QWidget):
             return
         cmp_data = compare_runs(paths)
         if not cmp_data:
-            self.detail_table.setPlainText("(no se pudo comparar)")
+            self.detail_table.setRowCount(1)
+            self.detail_table.setItem(0, 0, QTableWidgetItem("(no se pudo comparar)"))
             self.btn_save_compare.setEnabled(False)
             return
         self._last_compare = cmp_data
-        self.detail_title.setText(f"Comparación · {len(cmp_data.get('runs', []))} corridas")
-        self.detail_table.setPlainText(render_compare_markdown(cmp_data))
+        # Render the compare as a table: each row = one prompt, columns = run labels
+        runs = cmp_data.get("runs", [])
+        items_per_run = [r.get("items") or [] for r in runs]
+        max_items = max((len(items) for items in items_per_run), default=0)
+        self.detail_table.setColumnCount(1 + len(runs))
+        headers = ["# / Prompt"] + [r.get("label") or r.get("timestamp", "?") for r in runs]
+        self.detail_table.setHorizontalHeaderLabels(headers)
+        self.detail_table.setRowCount(max_items)
+        for i in range(max_items):
+            # Row header: prompt title (from the first run that has it)
+            title = ""
+            for items in items_per_run:
+                if i < len(items) and items[i].get("title"):
+                    title = items[i]["title"]
+                    break
+            self.detail_table.setItem(i, 0, QTableWidgetItem(f"{i+1} · {title}"))
+            for j, items in enumerate(items_per_run, start=1):
+                if i < len(items):
+                    m = items[i].get("metrics") or {}
+                    tps = m.get("tokens_per_sec_proxy")
+                    tps_s = f"{tps:.2f}" if isinstance(tps, (int, float)) else "-"
+                    cell = QTableWidgetItem(f"{tps_s} t/s")
+                    cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    self.detail_table.setItem(i, j, cell)
+                else:
+                    self.detail_table.setItem(i, j, QTableWidgetItem("-"))
+        self.detail_title.setText(f"Comparación · {len(runs)} corridas")
         self.btn_save_compare.setEnabled(True)
 
     def do_save_compare(self, results_dir: str) -> None:
@@ -2243,22 +2833,18 @@ class BenchmarkScreen(QWidget):
         be = r.get("backend") or {}
         cfg = be.get("config") or {}
         items = r.get("items") or []
-        lines = [
-            f"Run: {r.get('label')}  ({r.get('timestamp')})",
-            f"Backend: {be.get('backend')}  mock={be.get('mock')}",
-            f"Modelo: {cfg.get('name')}  Cuant: {cfg.get('quant') or '?'}",
-            f"Wall time: {(r.get('totals') or {}).get('wall_time_sec')} s",
-            "",
-            "| # | Título | elapsed (s) | t/s (proxy) | chars |",
-            "|---|--------|------------:|------------:|------:|",
-        ]
+        # Restore the 5-column layout (was overwritten by do_compare)
+        self.detail_table.setColumnCount(5)
+        self.detail_table.setHorizontalHeaderLabels(["#", "Título", "elapsed (s)", "t/s (proxy)", "chars"])
+        rows = []
         for i, it in enumerate(items, 1):
             m = it.get("metrics") or {}
             tps = m.get("tokens_per_sec_proxy")
             tps_s = f"{tps:.2f}" if isinstance(tps, (int, float)) else "-"
-            lines.append(f"| {i} | {it.get('title')} | {m.get('elapsed_sec')} | {tps_s} | {m.get('char_count')} |")
-        self.detail_title.setText(f"{r.get('label')} · benchmark reciente")
-        self.detail_table.setPlainText("\n".join(lines))
+            rows.append((str(i), it.get("title") or "", m.get("elapsed_sec") or "-", tps_s, m.get("char_count") or "-"))
+        wall = (r.get("totals") or {}).get("wall_time_sec")
+        title = f"{r.get('label')} · benchmark reciente  ·  wall {wall}s · backend {be.get('backend')}"
+        self._populate_table(rows, title=title)
 
 
 # ---------------------------------------------------------------------------
@@ -2274,7 +2860,7 @@ class PresetsScreen(QWidget):
         root.setContentsMargins(28, 28, 28, 48)
         root.setSpacing(16)
 
-        card, lay = _card("Presets de uso", "📋",
+        card, lay = _card("Presets de uso", "book",
                           "Contexto breve y consistente. La calidad real depende del modelo + cuantización + parámetros.")
         self.grid = QGridLayout()
         self.grid.setHorizontalSpacing(10)
@@ -2297,7 +2883,9 @@ class PresetsScreen(QWidget):
             title = QLabel(p.label, card)
             title.setObjectName("PresetTitle")
             clay.addWidget(title)
-            desc = QLabel(p.system, card)
+            # Mockup L2396-2402: short marketing description (not the full system prompt)
+            desc_text = p.desc if p.desc else p.system[:140] + ("…" if len(p.system) > 140 else "")
+            desc = QLabel(desc_text, card)
             desc.setObjectName("PresetDesc")
             desc.setWordWrap(True)
             clay.addWidget(desc)
@@ -2336,7 +2924,7 @@ class GPUScreen(QWidget):
         root.setSpacing(16)
 
         # GPU tiles card
-        card, lay = _card("GPU y Vulkan", "🖥",
+        card, lay = _card("GPU y Vulkan", "gpu",
                           "Detección automática de hardware. Vulkan NO cambia la inteligencia del modelo.")
         self.tiles_row = QHBoxLayout()
         self.tiles_row.setSpacing(12)
@@ -2348,15 +2936,14 @@ class GPUScreen(QWidget):
         lay.addLayout(self.tiles_row)
 
         btn_row = QHBoxLayout()
-        self.btn_redetect = QPushButton("↻  Re-detectar")
-        self.btn_redetect.setProperty("primary", True)
+        self.btn_redetect = _icon_button("Re-detectar", "refresh", primary=True)
         btn_row.addWidget(self.btn_redetect)
         btn_row.addStretch(1)
         lay.addLayout(btn_row)
         root.addWidget(card)
 
         # Warnings card
-        warn_card, wlay = _card("Avisos importantes", "⚠", "")
+        warn_card, wlay = _card("Avisos importantes", "alert", "")
         wlay.addWidget(_p("Vulkan / GPU offload es <b>experimental</b> en AMD Radeon RX550 4 GB. "
                            "Si falla, volvé a CPU — no rompe la app."))
         wlay.addWidget(_p("La calidad de la respuesta depende del <b>modelo + cuantización + parámetros</b>, "
@@ -2382,20 +2969,32 @@ class GPUScreen(QWidget):
         vk = summary.get("vulkan") or {}
         if vk.get("vulkan_dll_present"):
             self.tile_dll.val.setText("Presente")
-            self.tile_dll.val.setStyleSheet("color: #8ab589; font-size: 16px; font-weight: 500;")
+            self.tile_dll.val.setStyleSheet(
+                "color: #8ab589; font-size: 17px; font-weight: 500; "
+                "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; background: transparent; border: 0;"
+            )
             self.tile_dll.sub.setText("C:\\Windows\\System32\\vulkan-1.dll")
         else:
             self.tile_dll.val.setText("Ausente")
-            self.tile_dll.val.setStyleSheet("color: #d88a83; font-size: 16px; font-weight: 500;")
+            self.tile_dll.val.setStyleSheet(
+                "color: #d88a83; font-size: 17px; font-weight: 500; "
+                "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; background: transparent; border: 0;"
+            )
             self.tile_dll.sub.setText("")
 
         avail = vk.get("available")
         if avail:
             self.tile_vk.val.setText("Sí")
-            self.tile_vk.val.setStyleSheet("color: #8ab589; font-size: 16px; font-weight: 500;")
+            self.tile_vk.val.setStyleSheet(
+                "color: #8ab589; font-size: 17px; font-weight: 500; "
+                "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; background: transparent; border: 0;"
+            )
         else:
             self.tile_vk.val.setText("No")
-            self.tile_vk.val.setStyleSheet("color: #d4a361; font-size: 16px; font-weight: 500;")
+            self.tile_vk.val.setStyleSheet(
+                "color: #d4a361; font-size: 17px; font-weight: 500; "
+                "font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; background: transparent; border: 0;"
+            )
         info = vk.get("info") or {}
         sub_bits = []
         if info.get("api_version"):
@@ -2440,6 +3039,15 @@ class MainWindow(QMainWindow):
             _Qt.WindowType.Window
             | _Qt.WindowType.FramelessWindowHint
         )
+        # Apply the global QSS to the QApplication so all selectors
+        # (#BrandName, #Header, #Chip, QFrame[role="card"], etc.) take
+        # effect. Without this the QSS defined above is dead code.
+        app = QApplication.instance()
+        # Load bundled fonts (Newsreader) BEFORE applying the QSS so the
+        # serif font-family resolves to the bundled copy on every platform.
+        _load_bundled_fonts()
+        if app is not None:
+            app.setStyleSheet(QSS)
         # Allow Aero-snap on Windows when user drags to screen edge.
         try:
             import ctypes
@@ -2621,7 +3229,9 @@ class MainWindow(QMainWindow):
         self.refresh_gpu()
         self.refresh_status_chips()
         self.refresh_bench_runs()
-        self.statusBar().showMessage("Listo · Configura un modelo y un backend para empezar.")
+        # Hide the native QStatusBar — the mockup uses only toasts + the sidebar
+        # footer for status feedback (no bottom status bar).
+        self.statusBar().setVisible(False)
 
         # Restore default config widgets
         self.config_screen.apply_to_widgets(self.backend.config)
@@ -2736,6 +3346,7 @@ class MainWindow(QMainWindow):
         self.sidebar.new_chat_btn.clicked.connect(self._on_new_chat)
         self.sidebar.model_card.mousePressEvent = lambda ev: self._switch_screen("config")
         self.sidebar.collapse_btn.clicked.connect(self._toggle_sidebar)
+        self.sidebar.expand_btn.clicked.connect(self._toggle_sidebar)
 
     def _wire_chat(self) -> None:
         cs = self.chat_screen
@@ -2758,7 +3369,10 @@ class MainWindow(QMainWindow):
         cs.btn_start_backend.clicked.connect(self._on_start_backend)
         cs.btn_stop_backend.clicked.connect(self._on_stop_backend)
         cs.in_gguf_path.textChanged.connect(cs.refresh_gguf_info)
-        cs.cmb_backend_kind.currentTextChanged.connect(self._on_backend_kind_changed)
+        # Use currentData to receive the bare backend key (not the descriptive text)
+        cs.cmb_backend_kind.currentIndexChanged.connect(
+            lambda i: self._on_backend_kind_changed(cs.cmb_backend_kind.itemData(i) or "llama_cli")
+        )
 
     def _wire_metrics(self) -> None:
         self.metrics_screen.btn_refresh.clicked.connect(self.refresh_metrics)
@@ -2897,7 +3511,7 @@ class MainWindow(QMainWindow):
             return
         if not self.backend.is_running():
             ok = self.backend.start()
-            self.config_screen.log(f"start() -> {ok}")
+            self.config_screen.log(f"start() -> {ok}", level="ok" if ok else "err")
             self.refresh_sidebar_model_card()
             self.refresh_status_chips()
             if not ok:
@@ -3028,7 +3642,8 @@ class MainWindow(QMainWindow):
         if self.backend.is_running():
             self.backend.stop()
         self.backend = self._make_backend(new_cfg)
-        self.config_screen.log(f"start() -> {self.backend.start()}")
+        ok = self.backend.start()
+        self.config_screen.log(f"start() -> {ok}", level="ok" if ok else "err")
         self.refresh_sidebar_model_card()
         self.refresh_status_chips()
         self.refresh_metrics()
@@ -3088,7 +3703,7 @@ class MainWindow(QMainWindow):
             self._show_toast("No se encontró el .gguf — abrí Modelo y backend")
             return
         ok = self.backend.start()
-        self.config_screen.log(f"auto-start() -> {ok}")
+        self.config_screen.log(f"auto-start() -> {ok}", level="ok" if ok else "err")
         self.refresh_sidebar_model_card()
         self.refresh_metrics()
         self.refresh_status_chips()
@@ -3126,7 +3741,7 @@ class MainWindow(QMainWindow):
         # Title
         title = QLabel("¡Bienvenido a ForgeMind Local!")
         title.setStyleSheet(
-            "color: #f5f4ee; font-family: 'Newsreader', Georgia, serif; "
+            "color: #f5f4ee; font-family: 'Newsreader', Georgia, 'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; "
             "font-size: 22px; font-weight: 500; background: transparent; border: 0;"
         )
         v.addWidget(title)
@@ -3369,12 +3984,12 @@ class MainWindow(QMainWindow):
         cfg = self.backend.config
         cfg.llama_cli_path = self.config_screen.in_llama_cli.text().strip()
         cfg.llama_server_path = self.config_screen.in_llama_server.text().strip()
-        cfg.backend_kind = self.config_screen.cmb_backend_kind.currentText()
-        if not cfg.exists() and cfg.backend_kind != "mock":
+        cfg.backend_kind = self.config_screen.cmb_backend_kind.currentData() or "llama_cli"
+        if not cfg.exists() and cfg.backend_kind != "mock" and cfg.backend_kind != "ollama":
             QMessageBox.warning(self, "Modelo", "Ruta al .gguf inválida.")
             return
         ok = self.backend.start()
-        self.config_screen.log(f"start() -> {ok}")
+        self.config_screen.log(f"start() -> {ok}", level="ok" if ok else "err")
         self.refresh_sidebar_model_card()
         self.refresh_metrics()
         self.refresh_status_chips()
@@ -3504,17 +4119,27 @@ class MainWindow(QMainWindow):
         # chip model: name or "sin modelo"
         chip_name = cfg.name if cfg.name and cfg.name != "modelo-sin-nombre" else "(sin modelo)"
         self.set_chip_text(self.chip_model, chip_name)
-        # chip backend
+        # chip backend — show the friendly hyphenated form (mockup L1768)
         backend_kind = cfg.backend_kind or "llama_cli"
-        self.set_chip_text(self.chip_backend, backend_kind)
-        # titlebar
+        friendly = {
+            "llama_cli": "llama-cli",
+            "llama_server": "llama-server",
+            "llama_cpp": "llama-cpp",
+            "ollama": "ollama",
+        }.get(backend_kind, backend_kind)
+        self.set_chip_text(self.chip_backend, friendly)
+        # titlebar (also pass running state so the green dot reflects it)
         if cfg.size_human and cfg.quant:
             self.titlebar.set_status(
                 f"{cfg.name} · {cfg.quant} · {cfg.size_human}",
-                f"{backend_kind} {('activo' if self.backend.is_running() else 'detenido')}"
+                f"{friendly} {('activo' if self.backend.is_running() else 'detenido')}",
+                running=self.backend.is_running(),
             )
         else:
-            self.titlebar.set_status("(sin modelo)", backend_kind)
+            self.titlebar.set_status(
+                "(sin modelo)", friendly,
+                running=self.backend.is_running(),
+            )
 
     # ---------- command palette ----------
     def _open_palette(self) -> None:
@@ -3548,13 +4173,13 @@ class MainWindow(QMainWindow):
         if not path:
             return
         data = self.config_screen.gather_model_config().to_dict()
-        data["backend_kind"] = self.config_screen.cmb_backend_kind.currentText()
+        data["backend_kind"] = self.config_screen.cmb_backend_kind.currentData() or "llama_cli"
         data["llama_cli_path"] = self.config_screen.in_llama_cli.text().strip()
         data["llama_server_path"] = self.config_screen.in_llama_server.text().strip()
         data["ollama_url"] = self.config_screen.in_ollama_url.text().strip()
         Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        self.config_screen.log(f"config guardada en {path}")
-        self.statusBar().showMessage(f"Config guardada: {path}", 4000)
+        self.config_screen.log(f"config guardada en {path}", level="ok")
+        self._show_toast(f"Config guardada: {path}")
 
     def _on_load_config(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Cargar configuración",
@@ -3568,8 +4193,8 @@ class MainWindow(QMainWindow):
             return
         self.config_screen.apply_to_widgets(ModelConfig.from_dict(data))
         self.config_screen.refresh_gguf_info()
-        self.config_screen.log(f"config cargada de {path}")
-        self.statusBar().showMessage(f"Config cargada: {path}", 4000)
+        self.config_screen.log(f"config cargada de {path}", level="ok")
+        self._show_toast(f"Config cargada: {path}")
 
     def _on_about(self) -> None:
         QMessageBox.information(

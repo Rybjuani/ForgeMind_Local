@@ -18,6 +18,7 @@ class Preset:
     temperature: float
     top_p: float
     max_tokens: int
+    desc: str = ""
 
 
 PRESETS: list[Preset] = [
@@ -32,6 +33,7 @@ PRESETS: list[Preset] = [
         temperature=0.7,
         top_p=0.95,
         max_tokens=512,
+        desc="Asistente personal util, claro y directo. Responde en espanol y prioriza respuestas cortas y accionables.",
     ),
     Preset(
         key="coding",
@@ -44,6 +46,7 @@ PRESETS: list[Preset] = [
         temperature=0.2,
         top_p=0.95,
         max_tokens=1024,
+        desc="Da codigo ejecutable, explica decisiones clave y senala trade-offs. Pide contexto si hace falta.",
     ),
     Preset(
         key="auditoria",
@@ -57,6 +60,7 @@ PRESETS: list[Preset] = [
         temperature=0.2,
         top_p=0.95,
         max_tokens=1024,
+        desc="Analisis critico y estructurado. Distingue hechos de suposiciones y marca lo no verificable.",
     ),
     Preset(
         key="resumen",
@@ -69,6 +73,7 @@ PRESETS: list[Preset] = [
         temperature=0.3,
         top_p=0.95,
         max_tokens=512,
+        desc="Comprime sin perder hechos clave. Devuelve resumen + 3 puntos clave cuando aplica.",
     ),
     Preset(
         key="razonamiento",
@@ -81,6 +86,7 @@ PRESETS: list[Preset] = [
         temperature=0.4,
         top_p=0.95,
         max_tokens=1024,
+        desc="Razona paso a paso y muestra el camino. No inventa datos; planta la ambiguedad.",
     ),
     Preset(
         key="espanol_claro",
@@ -92,6 +98,7 @@ PRESETS: list[Preset] = [
         temperature=0.6,
         top_p=0.95,
         max_tokens=512,
+        desc="Espanol neutro, sin anglicismos innecesarios. Frases cortas, sin relleno.",
     ),
     Preset(
         key="prompt_largo",
@@ -104,6 +111,7 @@ PRESETS: list[Preset] = [
         temperature=0.5,
         top_p=0.95,
         max_tokens=2048,
+        desc="Respeta la estructura del prompt largo, no recorta secciones y conserva referencias.",
     ),
 ]
 
