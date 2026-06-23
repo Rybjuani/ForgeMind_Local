@@ -128,7 +128,7 @@ _DEFAULT_SETTINGS: dict[str, Any] = {
     },
     "ui": {
         "last_screen": "chat",
-        "auto_start_backend": False,
+        "auto_start_backend": True,
         "metrics_refresh_ms": 2500,
     },
 }
@@ -384,7 +384,15 @@ def first_run_setup(*, interactive: bool = True) -> dict[str, Any]:
         if name:
             settings["model"]["name"] = name
 
-    # 4. Persist
+    # 4. Auto-arrancar el backend al abrir si tenemos modelo + cli.
+    #    Si no encontramos nada, dejamos False para no estorbar al usuario
+    #    con un toast de error apenas abre la app.
+    if gguf and cli:
+        settings["ui"]["auto_start_backend"] = True
+    else:
+        settings["ui"]["auto_start_backend"] = False
+
+    # 5. Persist
     save_settings(settings)
     return settings
 

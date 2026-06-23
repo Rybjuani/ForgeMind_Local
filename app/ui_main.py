@@ -1558,15 +1558,36 @@ class Sidebar(QFrame):
 
     def set_model_card(self, *, name: str, quant: str, size_human: str,
                        ctx_size: int, running: bool) -> None:
-        if name:
-            self.mc_name.setText(name)
-        else:
+        # Distinguir tres estados:
+        #   (a) nombre real + gguf cargado  -> mostrar nombre + quant + size
+        #   (b) nombre pero sin gguf        -> mostrar "(sin .gguf)" en rojo
+        #   (c) sin nombre                  -> mostrar "(sin modelo)" en dim
+        gguf_loaded = bool(quant) or bool(size_human)
+        if not name or name == "modelo-sin-nombre":
             self.mc_name.setText("(sin modelo)")
+            self.mc_name.setStyleSheet(
+                "color: #a8a499; font-size: 13.5px; font-weight: 500; "
+                "font-family: 'Newsreader', Georgia, 'Liberation Serif', "
+                "'DejaVu Serif', 'Times New Roman', serif; "
+                "letter-spacing: -0.005em; background: transparent; border: 0;"
+            )
+        else:
+            self.mc_name.setText(name)
+            self.mc_name.setStyleSheet(
+                "color: #f5f4ee; font-size: 13.5px; font-weight: 500; "
+                "font-family: 'Newsreader', Georgia, 'Liberation Serif', "
+                "'DejaVu Serif', 'Times New Roman', serif; "
+                "letter-spacing: -0.005em; background: transparent; border: 0;"
+            )
         meta_bits = []
-        if quant: meta_bits.append(quant)
-        if size_human: meta_bits.append(f"<b>{size_human}</b>")
-        if ctx_size: meta_bits.append(f"<b>{ctx_size}</b> ctx")
-        self.mc_meta.setText(" · ".join(meta_bits))
+        if not gguf_loaded:
+            # Aviso visible cuando no hay .gguf cargado
+            meta_bits.append("<span style='color:#d88a83'>sin .gguf — click para configurar</span>")
+        else:
+            if quant: meta_bits.append(quant)
+            if size_human: meta_bits.append(f"<b>{size_human}</b>")
+            if ctx_size: meta_bits.append(f"<b>{ctx_size}</b> ctx")
+        self.mc_meta.setText(" · ".join(meta_bits) if meta_bits else "—")
         # pill
         if running:
             self.mc_pill.setProperty("idle", "false")
@@ -2234,7 +2255,16 @@ class ConfigScreen(QWidget):
         gguf_row.addWidget(self.btn_auto_gguf)
         form1.addLayout(gguf_row, 1, 0, 1, 2)
         self.lbl_gguf_info = QLabel("Cuant: ? · Tamaño: ?")
-        self.lbl_gguf_info.setStyleSheet("color: #787469; font-family: 'JetBrains Mono', monospace; font-size: 11px; background: transparent; border: 0;")
+        self.lbl_gguf_info.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_gguf_info.setWordWrap(True)
+        self.lbl_gguf_info.setMinimumHeight(20)
+        # Usar min-height + setTextFormat(RichText) para que el span HTML
+        # renderice correctamente. Sin el min-height el QLabel colapsa a 2px.
+        self.lbl_gguf_info.setStyleSheet(
+            "color: #787469; font-family: 'JetBrains Mono', monospace; "
+            "font-size: 11px; background: transparent; border: 0; "
+            "min-height: 20px;"
+        )
         form1.addWidget(self.lbl_gguf_info, 2, 0, 1, 2)
 
         form1.addWidget(_make_field_label("Nombre amigable"), 3, 0)
@@ -2291,6 +2321,12 @@ class ConfigScreen(QWidget):
         self.btn_refresh_info = QPushButton("Refrescar info")
         self.btn_refresh_info.setProperty("ghost", True)
         apply_row.addWidget(self.btn_refresh_info)
+        # NEW: "Auto-detectar todo" — boton que reescanea modelo + cli + server
+        # sin tener que abrir el wizard. Util cuando el usuario ya cerro el
+        # wizard y quiere re-detectar rapido.
+        self.btn_auto_detect_all = QPushButton("Auto-detectar todo")
+        self.btn_auto_detect_all.setProperty("ghost", True)
+        apply_row.addWidget(self.btn_auto_detect_all)
         apply_row.addStretch(1)
         m_lay.addLayout(apply_row)
 
@@ -2376,6 +2412,10 @@ class ConfigScreen(QWidget):
         self._on_slider_changed("temp", self.slider_temp.value())
         self._on_slider_changed("topp", self.slider_topp.value())
         self._on_slider_changed("rep", self.slider_rep.value())
+        # Forzar un refresh inicial del campo .gguf para que muestre el
+        # estado vacio (borde rojo + mensaje "Falta .gguf") en lugar del
+        # placeholder "Cuant: ? · Tamano: ?" del constructor.
+        self.refresh_gguf_info()
 
     # ---- helpers ----
 
@@ -2456,12 +2496,37 @@ class ConfigScreen(QWidget):
     def refresh_gguf_info(self) -> None:
         cfg = ModelConfig(gguf_path=self.in_gguf_path.text().strip())
         if not cfg.gguf_path:
-            self.lbl_gguf_info.setText("Cuant: ? · Tamaño: ?")
+            self.lbl_gguf_info.setText(
+                "<span style='color:#d88a83'>Falta .gguf — click 'Elegir' o 'Auto-detectar'</span>"
+            )
+            self.lbl_gguf_info.setTextFormat(Qt.TextFormat.RichText)
+            # resaltar el campo vacio con borde rojo tenue
+            self.in_gguf_path.setStyleSheet(
+                "QLineEdit { background: #151413; color: #f5f4ee; "
+                "border: 1px solid rgba(216,138,131,0.5); border-radius: 6px; "
+                "padding: 8px 11px; }"
+                "QLineEdit:focus { border: 1px solid rgba(217,119,87,0.34); background: #282623; }"
+            )
             return
         if not cfg.exists():
-            self.lbl_gguf_info.setText(f"Ruta no existe")
+            self.lbl_gguf_info.setText(
+                f"<span style='color:#d88a83'>Ruta no existe: {cfg.gguf_path}</span>"
+            )
+            self.lbl_gguf_info.setTextFormat(Qt.TextFormat.RichText)
+            self.in_gguf_path.setStyleSheet(
+                "QLineEdit { background: #151413; color: #f5f4ee; "
+                "border: 1px solid rgba(216,138,131,0.5); border-radius: 6px; "
+                "padding: 8px 11px; }"
+                "QLineEdit:focus { border: 1px solid rgba(217,119,87,0.34); background: #282623; }"
+            )
             return
-        self.lbl_gguf_info.setText(f"Cuant: {cfg.quant or '?'} · Tamaño: {cfg.size_human}")
+        # OK — restaurar estilo default
+        self.in_gguf_path.setStyleSheet("")
+        self.lbl_gguf_info.setText(
+            f"<span style='color:#8ab589'>OK</span>  ·  "
+            f"Cuant: <b>{cfg.quant or '?'}</b>  ·  Tamaño: <b>{cfg.size_human}</b>"
+        )
+        self.lbl_gguf_info.setTextFormat(Qt.TextFormat.RichText)
 
 
 def _make_field_label(text: str) -> QLabel:
@@ -3369,6 +3434,9 @@ class MainWindow(QMainWindow):
         cs.btn_start_backend.clicked.connect(self._on_start_backend)
         cs.btn_stop_backend.clicked.connect(self._on_stop_backend)
         cs.in_gguf_path.textChanged.connect(cs.refresh_gguf_info)
+        # NEW: boton "Auto-detectar todo" reescanea modelo + cli + server
+        if hasattr(cs, "btn_auto_detect_all"):
+            cs.btn_auto_detect_all.clicked.connect(self._on_auto_detect_all)
         # Use currentData to receive the bare backend key (not the descriptive text)
         cs.cmb_backend_kind.currentIndexChanged.connect(
             lambda i: self._on_backend_kind_changed(cs.cmb_backend_kind.itemData(i) or "llama_cli")
@@ -3637,18 +3705,108 @@ class MainWindow(QMainWindow):
         else:
             self._show_toast("llama-server no encontrado (opcional)")
 
+    def _on_auto_detect_all(self) -> None:
+        """Reescanea todo (.gguf + llama-cli + llama-server) en una sola accion.
+
+        Útil cuando el usuario cerró el wizard y quiere re-detectar sin
+        tener que hacer click en cada botón 'Auto-detectar' individual.
+        Rellena los widgets del ConfigScreen y muestra un toast con un
+        resumen de qué encontró.
+        """
+        from . import auto_config
+        self.config_screen.log("Auto-detectando todo...", level="info")
+        gguf = auto_config.find_gguf()
+        cli = auto_config.find_llama_cli()
+        srv = auto_config.find_llama_server()
+        found_count = sum(1 for x in (gguf, cli, srv) if x)
+        if gguf:
+            self.config_screen.in_gguf_path.setText(gguf)
+            self.config_screen.refresh_gguf_info()
+            # tambien sugerir un nombre amigable
+            name = Path(gguf).stem
+            for q in ("Q4_K_M", "Q4_K_S", "Q4_0", "Q5_K_M", "Q6_K", "Q8_0",
+                      "Q3_K_M", "Q2_K", "F16", "F32"):
+                if q.lower() in name.lower():
+                    name = name.replace(q, "").replace(q.lower(), "").strip("._- ")
+                    break
+            if name:
+                self.config_screen.in_name.setText(name)
+            self.config_screen.log(f"  .gguf: {gguf}", level="ok")
+        else:
+            self.config_screen.log("  .gguf: NO encontrado (soltá un .gguf en models/)", level="warn")
+        if cli:
+            self.config_screen.in_llama_cli.setText(cli)
+            self.config_screen.log(f"  llama-cli: {cli}", level="ok")
+        else:
+            self.config_screen.log("  llama-cli: NO encontrado en PATH ni en dirs estándar", level="warn")
+        if srv:
+            self.config_screen.in_llama_server.setText(srv)
+            self.config_screen.log(f"  llama-server: {srv}", level="ok")
+        else:
+            self.config_screen.log("  llama-server: NO encontrado (opcional)", level="info")
+        if found_count == 0:
+            self._show_toast("No se encontró nada — soltá .gguf + llama-cli en la carpeta")
+            QMessageBox.information(
+                self, "Auto-detectar todo",
+                "No se encontró ningún .gguf, llama-cli ni llama-server.\n\n"
+                "Pasos:\n"
+                "  1. Copiá tu archivo .gguf a la carpeta 'models/' junto al .exe\n"
+                "  2. Descargá llama.cpp de https://github.com/ggerganov/llama.cpp/releases\n"
+                "     y copiá llama-cli.exe + llama-server.exe a la carpeta 'bin/'\n"
+                "  3. Volvé a hacer click en 'Auto-detectar todo'\n\n"
+                "O usá 'Elegir' para apuntar manualmente a cada archivo."
+            )
+        elif found_count < 3:
+            self._show_toast(f"Encontré {found_count}/3 — faltan algunos componentes")
+        else:
+            self._show_toast(f"Encontré todo: {found_count}/3 — listo para 'Aplicar config'")
+
     def _on_apply_model(self) -> None:
         new_cfg = self.config_screen.gather_model_config()
+        # Validacion previa: explicar al usuario que falta antes de caer
+        # al modo mock silenciosamente.
+        problems = []
+        if not new_cfg.gguf_path:
+            problems.append("Falta el archivo .gguf (campo vacio).")
+        elif not new_cfg.exists():
+            problems.append(f"El .gguf no existe: {new_cfg.gguf_path}")
+        if new_cfg.backend_kind in ("llama_cli", "llama_server") and not new_cfg.llama_cli_path and not new_cfg.llama_server_path:
+            # Aceptamos que esten vacios si los encuentra en PATH — pero
+            # avisamos al usuario para que sepa donde mirar.
+            from . import auto_config
+            has_in_path = (auto_config.find_llama_cli() if new_cfg.backend_kind == "llama_cli"
+                           else auto_config.find_llama_server())
+            if not has_in_path:
+                problems.append(f"{new_cfg.backend_kind} no esta en PATH ni en el campo de ruta.")
+        if problems:
+            msg = "No se pudo aplicar la config:\n\n  - " + "\n  - ".join(problems)
+            self.config_screen.log(msg, level="err")
+            QMessageBox.warning(self, "Configuracion incompleta", msg)
+            self._show_toast("Config incompleta — revisa los campos")
+            return
+
         if self.backend.is_running():
             self.backend.stop()
         self.backend = self._make_backend(new_cfg)
         ok = self.backend.start()
         self.config_screen.log(f"start() -> {ok}", level="ok" if ok else "err")
+        if not ok:
+            err = getattr(self.backend, "_load_error", None) or "error desconocido"
+            self.config_screen.log(f"backend no arranco: {err}", level="err")
+            QMessageBox.warning(self, "Backend", f"No se pudo arrancar el backend:\n\n{err}")
+            self._show_toast("Backend no arranco — ver log")
+        else:
+            # Confirmar al usuario que modo termino usando (mock, llama_cli, etc.)
+            mode_active = getattr(self.backend, "_backend_kind_active", "?")
+            self.config_screen.log(f"modo activo: {mode_active}", level="ok" if mode_active != "mock" else "warn")
+            if mode_active == "mock":
+                self._show_toast("Config aplicada en modo MOCK (sin modelo real)")
+            else:
+                self._show_toast(f"Config aplicada · {new_cfg.name} ({mode_active})")
         self.refresh_sidebar_model_card()
         self.refresh_status_chips()
         self.refresh_metrics()
         self._save_settings()  # persist every config change to settings.json
-        self._show_toast(f"Config aplicada · {new_cfg.name}")
 
     def _save_settings(self) -> Path:
         """Persist the current in-memory settings back to settings.json.
@@ -3699,17 +3857,29 @@ class MainWindow(QMainWindow):
         crashes the UI.
         """
         cfg = self.backend.config
+        if not cfg.gguf_path:
+            # Sin modelo configurado — el usuario necesita configurar uno.
+            self._show_toast("Sin modelo .gguf — abri 'Modelo y backend' para elegir uno")
+            self.config_screen.log("auto-start: gguf_path vacio, no se arranca", level="warn")
+            return
         if not cfg.exists() and cfg.backend_kind != "ollama":
-            self._show_toast("No se encontró el .gguf — abrí Modelo y backend")
+            self._show_toast(f"El .gguf no existe: {cfg.gguf_path}")
+            self.config_screen.log(f"auto-start: .gguf no existe: {cfg.gguf_path}", level="err")
             return
         ok = self.backend.start()
         self.config_screen.log(f"auto-start() -> {ok}", level="ok" if ok else "err")
+        mode_active = getattr(self.backend, "_backend_kind_active", "?")
+        self.config_screen.log(f"modo activo: {mode_active}", level="ok" if mode_active != "mock" else "warn")
         self.refresh_sidebar_model_card()
         self.refresh_metrics()
         self.refresh_status_chips()
-        self._show_toast(
-            "Modelo iniciado" if ok else "Falló el auto-start — revisá el backend"
-        )
+        if ok and mode_active != "mock":
+            self._show_toast(f"Modelo iniciado · {mode_active}")
+        elif ok and mode_active == "mock":
+            self._show_toast("Arranco en modo MOCK (no se encontro llama-cli o el .gguf)")
+        else:
+            err = getattr(self.backend, "_load_error", None) or "error desconocido"
+            self._show_toast(f"Fallo el auto-start: {err[:60]}")
 
     def _show_first_run_wizard(self) -> None:
         """Show the in-app wizard when nothing was auto-detected.
