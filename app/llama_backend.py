@@ -409,44 +409,174 @@ class LlamaBackend(BackendBase):
     # ---------- streaming interno ----------
 
     def _stream_via_cli(self, prompt: str, system: str) -> Iterator[str]:
+        """Stream output from a one-shot llama-cli subprocess.
+
+        On Windows, ``subprocess.Popen`` with a pipe *and* line buffering
+        frequently buffers the entire output until the process exits,
+        which kills our streaming UX. We work around that with a
+        dedicated reader thread that drains the pipe into a queue.
+        """
         cmd = _build_cli_command(self.config, self._exe, prompt, system)
         self.last_command = " ".join(_quote(a) for a in cmd)
-        self.last_pid = None  # se actualiza al Popen
+        self.last_pid = None
+        import queue as _queue
+        from threading import Thread
+
         try:
-            # Importante: stdout=PIPE + text=True + bufsize=1 para leer linea a linea.
-            # NO usar shell=True (vulnerable + rompe quoting).
+            # Binary mode + explicit decode is the most reliable way to
+            # stream on Windows. text=True + bufsize=1 ends up buffering
+            # the entire output until the process exits.
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,  # mezcla para que si hay error, lo veamos
-                text=True,
-                bufsize=1,
-                encoding="utf-8",
-                errors="replace",
+                stderr=subprocess.STDOUT,
+                bufsize=0,
             )
             self._active_proc = proc
             self.last_pid = proc.pid
-            try:
-                if proc.stdout is None:
-                    return
-                for line in proc.stdout:
-                    # Filter el prompt que a veces se re-emite, y lineas de status
-                    s = line.rstrip("\n")
+
+            q: _queue.Queue[str | None] = _queue.Queue(maxsize=10_000)
+
+            def _reader() -> None:
+                assert proc.stdout is not None
+                try:
+                    # Read in larger chunks for throughput; the queue
+                    # hands the consumer a steady stream of bytes that
+                    # the consumer assembles into lines.
+                    while True:
+                        chunk = proc.stdout.read(4096)
+                        if not chunk:
+                            q.put(None)
+                            return
+                        try:
+                            q.put(chunk.decode("utf-8", errors="replace"))
+                        except Exception:
+                            q.put("?")
+                except Exception:
+                    q.put(None)
+
+            t = Thread(target=_reader, daemon=True)
+            t.start()
+
+            # Line-prefixes that are llama.cpp's own UI/log text, not
+            # model output. We skip them so the chat stays clean.
+            noise_prefixes = (
+                "llama_",
+                "llm_load",
+                "system_info:",
+                "load:",
+                "load_tensors:",
+                "load_backend:",
+                "load_model:",
+                "init:",
+                "sampler chain:",
+                "sampler seed:",
+                "sampler params:",
+                "generate:",
+                "main:",
+                "== Running in interactive",
+                "==",
+                "- Press Ctrl+C",
+                "- Press Return",
+                "- To return control",
+                "- If you want to submit",
+                "- Not using system message",
+                "> EOF by user",
+                "llama_perf_",
+                "top_k =",
+                "top_p =",
+                "min_p =",
+                "xtc_",
+                "typical_p =",
+                "top_n_sigma =",
+                "temp =",
+                "mirostat",
+                "repeat_last_n",
+                "frequency_penalty",
+                "presence_penalty",
+                "dry_multiplier",
+                "dry_base",
+                "dry_allowed",
+                "dry_penalty_last_n",
+                "Reverse prompt:",
+                "sampling:",
+                "model ",
+                "n_keep =",
+                "common:",
+                "common_perf",
+                "print_info:",
+                "interactive",
+                "build:",
+                "WARNING:",
+                "warning:",
+                "error:",
+                "log:",
+                "common_init_from_params:",
+                "*** User-specified prompt",
+            )
+
+            buf = ""
+            saw_chat_boundary = False
+            while True:
+                try:
+                    item = q.get(timeout=600)
+                except _queue.Empty:
+                    break
+                if item is None:
+                    # EOF
+                    break
+                buf += item
+                # Normalize line endings: llama.cpp uses \r in some places
+                # (e.g. model loading progress), \n in others. Treat both
+                # as line terminators.
+                buf = buf.replace("\r\n", "\n").replace("\r", "\n")
+                # Drop leading run of dots+spaces (loading progress lines
+                # that never end with a newline because of buffering)
+                while len(buf) > 0 and buf[0] in (".", " "):
+                    buf = buf[1:]
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    s = line.lstrip()
                     if not s:
                         continue
-                    if s.startswith(("llama_model_loader:", "llm_load_print:", "system_info:")):
-                        # log tecnico, no es contenido generado
+                    if any(s.startswith(p) for p in noise_prefixes):
+                        continue
+                    # Skip chat-template tokens (Qwen2.5, Llama-3, etc.)
+                    # The model sometimes "leaks" a few turns of its
+                    # training data right before producing the real
+                    # response. We drop those lines but DO NOT break —
+                    # the actual response comes after them.
+                    if "<|im_start|>" in s or "<|im_end|>" in s:
+                        continue
+                    if s.strip() in {"1>", "2>", ">"}:
                         continue
                     yield s + "\n"
-                ret = proc.wait()
-                if ret != 0:
-                    self._load_error = f"llama-cli exit {ret}"
-            finally:
-                self._active_proc = None
+                if saw_chat_boundary:
+                    break
+                # Interruption is handled at the consumer (GenerateRunner)
+                # level — LlamaBackend itself is not a QThread.
+
+            # Flush any remaining partial line
+            if buf.strip() and not saw_chat_boundary:
+                s = buf.lstrip()
+                if (
+                    s
+                    and not any(s.startswith(p) for p in noise_prefixes)
+                    and "<|im_start|>" not in s
+                    and "<|im_end|>" not in s
+                    and s.strip() not in {"1>", "2>", ">"}
+                ):
+                    yield s + "\n"
+
+            ret = proc.wait()
+            if ret != 0 and not saw_chat_boundary:
+                self._load_error = f"llama-cli exit {ret}"
         except subprocess.TimeoutExpired:
             self._load_error = "llama-cli timeout (>600s)"
         except Exception as e:
             self._load_error = f"llama-cli stream fallo: {e}"
+        finally:
+            self._active_proc = None
 
     def _stream_via_server(self, prompt: str, system: str) -> Iterator[str]:
         url = f"http://127.0.0.1:{self._server_port}/completion"

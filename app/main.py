@@ -4,6 +4,7 @@ Uso:
     python -m app.main            # arranca la UI
     python -m app.main --check    # solo imprime resumen de entorno y sale
     python -m app.main --mock     # fuerza MOCK_LLM=1 para inspeccionar UI sin modelo
+    python -m app.main --wizard   # fuerza el wizard de primer arranque (regenera settings.json)
 """
 
 from __future__ import annotations
@@ -52,15 +53,31 @@ def _print_env_summary() -> None:
         print(f"  Vulkan (heur) : {vk.get('available')}")
     except Exception as e:
         print(f"  Error detectando GPU/Vulkan: {e}")
+    print()
+    # Auto-config summary
+    try:
+        from . import auto_config
+        s = auto_config.load_settings()
+        print("-- Auto-config (settings.json) --")
+        print(auto_config.describe_environment(s))
+    except Exception as e:
+        print(f"  Error: {e}")
 
 
 def _run_ui() -> int:
     # Import diferido para que --check funcione sin PyQt6 instalado
     from PyQt6.QtWidgets import QApplication
+    from . import auto_config
     from .ui_main import MainWindow
 
+    # First-run setup: auto-detect llama-cli / gguf / write settings.json
+    # if it's missing. Idempotent — does nothing on subsequent runs.
+    settings = auto_config.first_run_setup()
+
     app = QApplication(sys.argv)
-    win = MainWindow()
+    app.setApplicationName("ForgeMind Local")
+    app.setOrganizationName("ForgeMind")
+    win = MainWindow(initial_settings=settings)
     win.show()
     return app.exec()
 
@@ -71,10 +88,19 @@ def main(argv: list[str] | None = None) -> int:
                    help="Solo imprime resumen de entorno y sale.")
     p.add_argument("--mock", action="store_true",
                    help="Fuerza MOCK_LLM=1 (UI sirve sin modelo cargado).")
+    p.add_argument("--wizard", action="store_true",
+                   help="Borra settings.json y vuelve a correr el wizard de primer arranque.")
     args = p.parse_args(argv)
 
     if args.mock:
         os.environ["MOCK_LLM"] = "1"
+
+    if args.wizard:
+        from . import auto_config
+        p = auto_config.settings_path()
+        if p.exists():
+            p.unlink()
+            print(f"[wizard] Borrado {p}")
 
     if args.check:
         _print_env_summary()

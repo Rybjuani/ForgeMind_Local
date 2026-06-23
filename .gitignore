@@ -49,6 +49,20 @@ configs/*.real.json
 configs/models.json
 configs/settings.json
 
+# Settings.json del usuario (auto-generado por auto_config.first_run_setup)
+# Contiene paths absolutos a la maquina del developer; NUNCA commitear.
+settings.json
+
+# Binarios de llama.cpp descargados por app/downloader.py
+# (se regeneran via el wizard o `python -m app.downloader cpu`).
+bin/
+
+# Vulkan info dump generado por `vulkaninfo --json` (system-specific).
+VP_VULKANINFO_*.json
+
+# Screenshots de QA/headless (las del README en screenshots/*.png SI se commitean)
+screenshots/smoke-*.png
+
 # Entorno / secretos
 .env
 .env.*
