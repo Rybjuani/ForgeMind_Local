@@ -34,11 +34,13 @@ hidden = (
 
 # Binarios / data
 datas = []
-# Si queres incluir el README o docs, descomenta:
-# datas += [
-#     (str(ROOT / "README.md"), "."),
-#     (str(ROOT / "docs"), "docs"),
-# ]
+# Bundled fonts (Newsreader variable TTF) — without this the .exe
+# falls back to generic sans and the mockup's serif identity is lost.
+# The destination "app/assets/fonts" mirrors the source layout so
+# _load_bundled_fonts() resolves the same Path at runtime.
+_fonts_dir = ROOT / "app" / "assets" / "fonts"
+if _fonts_dir.is_dir():
+    datas.append((str(_fonts_dir), "app/assets/fonts"))
 
 a = Analysis(
     [str(ROOT / "run.py")],
