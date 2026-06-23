@@ -33,7 +33,7 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -53,7 +53,6 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMenuBar,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -782,6 +781,44 @@ class GenerateRunner(QThread):
 
 
 # ---------------------------------------------------------------------------
+# DownloadRunner — QThread wrapper around app.downloader
+# ---------------------------------------------------------------------------
+
+class DownloadRunner(QThread):
+    """Runs install_starter_kit() in a background thread.
+
+    Emits progress as ``(key, done_bytes, total_bytes)`` and a
+    final ``(success: bool, result: dict)`` when done.
+    """
+
+    progress = pyqtSignal(str, int, int)   # key, done, total
+    stage    = pyqtSignal(str)             # human-readable stage label
+    finished_ok = pyqtSignal(dict)         # result dict from install_starter_kit
+    failed  = pyqtSignal(str)              # error message
+
+    def __init__(self, config_dir: Path, variant: str = "cpu") -> None:
+        super().__init__()
+        self._config_dir = config_dir
+        self._variant = variant
+
+    def run(self) -> None:
+        try:
+            from . import downloader
+            self.stage.emit("Buscando binarios…")
+            def _on_progress(key: str, done: int, total: int) -> None:
+                # Throttled internally by the downloader
+                self.progress.emit(key, done, total)
+            self.stage.emit("Descargando llama.cpp…")
+            result = downloader.install_starter_kit(
+                self._config_dir, variant=self._variant, progress=_on_progress,
+            )
+            self.stage.emit("Finalizando…")
+            self.finished_ok.emit(result)
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(f"{type(e).__name__}: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
 
@@ -811,6 +848,9 @@ class TitleBar(QFrame):
         super().__init__(parent)
         self.setObjectName("TitleBar")
         self.setFixedHeight(38)
+        # Forward drag events to the top-level window (frameless).
+        # The MainWindow installs a custom mouse handler that moves
+        # the window by the mouse delta.
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 0, 12, 0)
@@ -2384,9 +2424,36 @@ class MainWindow(QMainWindow):
         Config screen from it and (if the user opted-in) auto-start
         the backend so the user can chat immediately.
         """
+        # Frameless: no native Windows titlebar, no native menubar.
+        # We use a fully custom TitleBar (38 px) with traffic-light
+        # buttons (min/max/close), matching the mockup's "Claude
+        # desktop" visual DNA. We keep the window on the taskbar via
+        # the Window flag override below.
         super().__init__()
         self.setWindowTitle("ForgeMind Local")
         self.resize(1180, 800)
+        # Use FramelessWindowHint but keep system menu available
+        # (alt+space) and the taskbar entry. Hint: WindowStaysOnTopHint
+        # is intentionally NOT used.
+        from PyQt6.QtCore import Qt as _Qt
+        self.setWindowFlags(
+            _Qt.WindowType.Window
+            | _Qt.WindowType.FramelessWindowHint
+        )
+        # Allow Aero-snap on Windows when user drags to screen edge.
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            pass
+
+        # Drag state for the frameless titlebar
+        self._drag_pos: tuple[int, int] | None = None
+        self._resize_edge: int = 0  # bitmask: 1=L, 2=R, 4=T, 8=B
+        # Background download runner (used by the first-run wizard).
+        # Declared up-front so Pyright doesn't complain when the
+        # wizard creates and connects to it.
+        self._download_runner: DownloadRunner | None = None
 
         # --- Hydrate from settings (or fall back to defaults) ---
         from . import auto_config
@@ -2432,7 +2499,11 @@ class MainWindow(QMainWindow):
         self._first_run_was_just_run = not auto_config.settings_path().exists()
 
         # --- Build UI ---
-        self._build_menu()
+        # NOTE: no native QMenuBar — the mockup uses a fully custom
+        # chrome (frameless window + custom TitleBar with traffic-
+        # light buttons). The "Archivo/Ayuda" actions live in the
+        # Command Palette instead (Ctrl+K → "Guardar configuración",
+        # "Salir", etc.).
         root = QWidget()
         root.setObjectName("AppRoot")
         self.setCentralWidget(root)
@@ -2570,6 +2641,50 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self._on_tick)
         self._timer.start(2500)
 
+    # ---------- Frameless window: drag + double-click on titlebar ----------
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            tb = getattr(self, "titlebar", None)
+            if tb is not None and tb.underMouse():
+                self._drag_pos = (
+                    event.globalPosition().toPoint()
+                    - self.frameGeometry().topLeft()
+                )
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+        if (
+            self._drag_pos is not None
+            and (event.buttons() & Qt.MouseButton.LeftButton)
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # type: ignore[override]
+        # Double-click on titlebar = toggle maximize (Claude desktop style)
+        tb = getattr(self, "titlebar", None)
+        if tb is not None and tb.underMouse():
+            if self.isMaximized():
+                self.showNormal()
+            else:
+                self.showMaximized()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        # Keep the titlebar's status in sync when window is minimized
+        # or restored. (No-op for now; placeholder for future use.)
+        super().changeEvent(event)
+
     # ---------- factory ----------
     def _make_backend(self, config: ModelConfig):
         try:
@@ -2580,32 +2695,13 @@ class MainWindow(QMainWindow):
         return LlamaBackend(config)
 
     # ---------- menu ----------
-    def _build_menu(self) -> None:
-        mb = QMenuBar()
-        mb.setStyleSheet("""
-            QMenuBar { background: #211f1d; color: #d8d4c8; border-bottom: 1px solid #34312e; padding: 2px; }
-            QMenuBar::item { background: transparent; padding: 4px 10px; border-radius: 4px; }
-            QMenuBar::item:selected { background: rgba(255,255,255,0.05); }
-            QMenu { background: #2f2d2a; color: #f5f4ee; border: 1px solid #444039; padding: 4px; }
-            QMenu::item { padding: 6px 16px; border-radius: 4px; }
-            QMenu::item:selected { background: rgba(217,119,87,0.20); }
-        """)
-        self.setMenuBar(mb)
-        m_file = mb.addMenu("&Archivo")
-        act_load = QAction("Cargar configuración...", self)
-        act_load.triggered.connect(self._on_load_config)
-        m_file.addAction(act_load)
-        act_save = QAction("Guardar configuración...", self)
-        act_save.triggered.connect(self._on_save_config)
-        m_file.addAction(act_save)
-        m_file.addSeparator()
-        act_quit = QAction("Salir", self)
-        act_quit.triggered.connect(self.close)
-        m_file.addAction(act_quit)
-        m_help = mb.addMenu("&Ayuda")
-        act_about = QAction("Acerca de...", self)
-        act_about.triggered.connect(self._on_about)
-        m_help.addAction(act_about)
+    # NOTE: QMenuBar removed. The mockup uses a fully frameless window
+    # with a custom TitleBar (38 px) and traffic-light buttons. The
+    # "Archivo/Ayuda" actions live in the Command Palette (Ctrl+K):
+    #   - "Guardar configuración"  → guarda settings.json
+    #   - "Cargar configuración"   → carga settings.json desde disco
+    #   - "Salir"                  → cierra la app
+    #   - "Acerca de…"             → muestra info de versión
 
     # ---------- helpers ----------
     def _make_chip(self, text: str, *, accent: bool) -> QFrame:
@@ -3003,45 +3099,53 @@ class MainWindow(QMainWindow):
     def _show_first_run_wizard(self) -> None:
         """Show the in-app wizard when nothing was auto-detected.
 
-        The wizard gives the user three options:
-          1. ``Re-auto-detectar`` — re-run the search over standard
-             locations in case they just dropped a .gguf / llama-cli.
+        The wizard gives the user several options:
+          1. ``Descargar modelo starter`` — pulls llama.cpp + a small
+             Qwen2.5-1.5B GGUF (~1.2 GB) in the background, then
+             re-detects and closes the wizard.
           2. ``Elegir manualmente`` — file dialog to pick a .gguf.
-          3. ``Usar modo mock`` — closes the wizard so the user can
+          3. ``Re-auto-detectar`` — re-scan standard locations in
+             case the user just dropped files in.
+          4. ``Modo mock`` — closes the wizard so the user can
              browse the UI without a model.
 
         It's a friendly dialog, not a blocker: closing it (X) lands
-        the user back on the chat with the auto-detected values that
-        *were* found filled in (e.g. llama-cli on PATH but no .gguf).
+        the user back on the chat with the auto-detected values
+        that *were* found filled in.
         """
+        from . import auto_config, downloader as _downloader
         dlg = QDialog(self)
         dlg.setWindowTitle("ForgeMind · Primer arranque")
         dlg.setObjectName("WizardDialog")
         dlg.setModal(True)
-        dlg.resize(560, 480)
+        dlg.resize(600, 540)
         v = QVBoxLayout(dlg)
-        v.setContentsMargins(24, 20, 24, 20)
+        v.setContentsMargins(28, 24, 28, 24)
         v.setSpacing(12)
 
+        # Title
         title = QLabel("¡Bienvenido a ForgeMind Local!")
         title.setStyleSheet(
-            "color: #f5f4ee; font-size: 18px; font-weight: 500; background: transparent; border: 0;"
+            "color: #f5f4ee; font-family: 'Newsreader', Georgia, serif; "
+            "font-size: 22px; font-weight: 500; background: transparent; border: 0;"
         )
         v.addWidget(title)
 
         sub = QLabel(
-            "Buscamos un .gguf y llama-cli en lugares comunes. Si los encontraste "
-            "pero no aparecieron, usá los botones para elegir manualmente. "
-            "También podés usar el modo mock para explorar la UI sin modelo."
+            "No encontramos un modelo ni llama-cli. Te dejamos tres caminos:\n"
+            "  1. Descargamos un kit starter (llama.cpp + Qwen2.5-1.5B Q4_K_M, ~1.2 GB).\n"
+            "  2. Elegís un .gguf que ya tengas en disco.\n"
+            "  3. Explorás la UI en modo mock (sin modelo).\n\n"
+            "Tu PC, tus datos, sin nube."
         )
         sub.setWordWrap(True)
         sub.setStyleSheet(
-            "color: #a8a499; font-size: 13px; line-height: 1.55; background: transparent; border: 0;"
+            "color: #d8d4c8; font-size: 13px; line-height: 1.6; "
+            "background: transparent; border: 0;"
         )
         v.addWidget(sub)
 
-        # --- Detection report ---
-        from . import auto_config
+        # --- Detection report (collapsed by default) ---
         ggufs = auto_config.find_gguf_all()
         cli = auto_config.find_llama_cli()
         srv = auto_config.find_llama_server()
@@ -3052,11 +3156,11 @@ class MainWindow(QMainWindow):
         report.setStyleSheet(
             "color: #d8d4c8; font-family: 'JetBrains Mono', Consolas, monospace; "
             "font-size: 12px; background: #151413; border: 1px solid #34312e; "
-            "border-radius: 8px; padding: 12px 14px;"
+            "border-radius: 8px; padding: 10px 14px;"
         )
         cfg_dir = auto_config.config_dir()
         gguf_lines = (
-            "<br>".join(f"&nbsp;&nbsp;• {g}" for g in ggufs[:8])
+            "<br>".join(f"&nbsp;&nbsp;• {g}" for g in ggufs[:5])
             if ggufs else
             "&nbsp;&nbsp;<span style=\"color:#d88a83\">ninguno</span>"
         )
@@ -3064,13 +3168,32 @@ class MainWindow(QMainWindow):
         srv_html = srv or '<span style="color:#787469">NO encontrado</span>'
         report_text = (
             f"<b>Config dir:</b> {cfg_dir}<br>"
-            f"<b>Settings:</b> {auto_config.settings_path()}<br>"
             f"<b>llama-cli:</b> {cli_html}<br>"
             f"<b>llama-server:</b> {srv_html}<br>"
             f"<b>.gguf encontrados ({len(ggufs)}):</b><br>{gguf_lines}"
         )
         report.setText(report_text)
         v.addWidget(report)
+
+        # --- Download progress widget (hidden until download starts) ---
+        self._wizard_progress = QProgressBar()
+        self._wizard_progress.setRange(0, 0)  # indeterminate until first chunk
+        self._wizard_progress.setVisible(False)
+        self._wizard_progress.setFixedHeight(8)
+        self._wizard_progress.setStyleSheet(
+            "QProgressBar { background: #211f1d; border: 1px solid #34312e; "
+            "border-radius: 4px; } "
+            "QProgressBar::chunk { background: #d97757; border-radius: 4px; }"
+        )
+        v.addWidget(self._wizard_progress)
+
+        self._wizard_stage = QLabel("")
+        self._wizard_stage.setStyleSheet(
+            "color: #a8a499; font-size: 11.5px; "
+            "background: transparent; border: 0;"
+        )
+        self._wizard_stage.setVisible(False)
+        v.addWidget(self._wizard_stage)
 
         # --- Auto-start checkbox ---
         self._wizard_autostart_cb = QCheckBox(
@@ -3084,10 +3207,13 @@ class MainWindow(QMainWindow):
         )
         v.addWidget(self._wizard_autostart_cb)
 
-        # --- Buttons ---
+        v.addStretch(1)
+
+        # --- Buttons (the order matches the suggested user journey) ---
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
+        # Helper: open the models folder in Explorer
         def _open_models_dir():
             target = cfg_dir / "models"
             target.mkdir(parents=True, exist_ok=True)
@@ -3122,27 +3248,99 @@ class MainWindow(QMainWindow):
         b_mock.clicked.connect(dlg.reject)
         btn_row.addWidget(b_mock)
 
+        # Secondary: file picker (user has their own .gguf)
         b_pick = QPushButton("Elegir .gguf…")
-        b_pick.setProperty("primary", True)
+        b_pick.setProperty("ghost", True)
         def _pick_gguf():
             path, _ = QFileDialog.getOpenFileName(
                 self, "Elegir modelo GGUF", "", "GGUF (*.gguf);;Todos (*.*)"
             )
             if path:
-                # Persist immediately and re-hydrate the UI.
                 self.config_screen.in_gguf_path.setText(path)
-                # Best-effort: refresh widgets derived from the path
                 self.config_screen.refresh_gguf_info()
-                # Save + close wizard
                 self._save_settings()
                 dlg.accept()
         b_pick.clicked.connect(_pick_gguf)
         btn_row.addWidget(b_pick)
 
+        # Primary: download the starter kit
+        b_download = QPushButton("Descargar modelo starter")
+        b_download.setProperty("primary", True)
+        def _start_download():
+            from pathlib import Path
+            # Disable all action buttons so we don't get concurrent downloads
+            for b in (b_pick, b_redetect, b_mock, b_models, b_download):
+                b.setEnabled(False)
+            b_download.setText("Descargando…")
+            self._wizard_progress.setVisible(True)
+            self._wizard_stage.setVisible(True)
+            self._wizard_progress.setRange(0, 0)  # indeterminate
+            self._wizard_stage.setText("Iniciando descarga…")
+
+            cfg = auto_config.config_dir()
+            self._download_runner = DownloadRunner(cfg, variant="cpu")
+
+            def _on_progress(key: str, done: int, total: int):
+                if total > 0 and self._wizard_progress.maximum() != total:
+                    self._wizard_progress.setRange(0, total)
+                self._wizard_progress.setValue(done)
+                pct = (done / total * 100) if total > 0 else 0
+                size = _downloader.human_bytes(done)
+                total_size = _downloader.human_bytes(total) if total > 0 else "?"
+                label = {
+                    "llama_cpp_cpu": "llama.cpp (CPU)",
+                    "llama_cpp_vulkan": "llama.cpp (Vulkan)",
+                    "qwen_15b_q4": "Qwen2.5-1.5B Q4_K_M",
+                    "llama_1b_q4": "Llama-3.2-1B Q4_K_M",
+                }.get(key, key)
+                self._wizard_stage.setText(
+                    f"{label} — {size} / {total_size} ({pct:.1f}%)"
+                )
+
+            def _on_finished(result: dict):
+                self._wizard_progress.setRange(0, 1)
+                self._wizard_progress.setValue(1)
+                llama = result.get("llama_cli", "?")
+                model = result.get("model", "?")
+                self._wizard_stage.setText(
+                    f"Listo — llama-cli={Path(llama).name} · modelo={Path(model).name}"
+                )
+                # Persist and re-hydrate everything
+                self._settings = self._auto_config.first_run_setup(interactive=False)
+                self.backend = self._make_backend(
+                    ModelConfig(
+                        gguf_path=self._settings["model"].get("gguf_path", ""),
+                        name=self._settings["model"].get("name", "modelo-sin-nombre"),
+                        backend_kind=self._settings["model"].get("backend_kind", "llama_cli"),
+                        llama_cli_path=self._settings["model"].get("llama_cli_path", ""),
+                        llama_server_path=self._settings["model"].get("llama_server_path", ""),
+                    )
+                )
+                self.config_screen.apply_to_widgets(self.backend.config)
+                self.refresh_sidebar_model_card()
+                self.refresh_metrics()
+                self.refresh_status_chips()
+                QTimer.singleShot(700, dlg.accept)
+
+            def _on_failed(err: str):
+                self._wizard_progress.setRange(0, 1)
+                self._wizard_progress.setValue(0)
+                self._wizard_stage.setText(f"Error: {err}")
+                for b in (b_pick, b_redetect, b_mock, b_models, b_download):
+                    b.setEnabled(True)
+                b_download.setText("Reintentar descarga")
+
+            self._download_runner.progress.connect(_on_progress)
+            self._download_runner.finished_ok.connect(_on_finished)
+            self._download_runner.failed.connect(_on_failed)
+            self._download_runner.start()
+        b_download.clicked.connect(_start_download)
+        btn_row.addWidget(b_download)
+
         v.addLayout(btn_row)
 
-        # Persist the auto-start checkbox choice regardless of how the
-        # wizard is closed.
+        # Persist the auto-start checkbox choice regardless of how
+        # the wizard is closed.
         dlg.finished.connect(lambda *_: self._save_settings())
 
         dlg.exec()
