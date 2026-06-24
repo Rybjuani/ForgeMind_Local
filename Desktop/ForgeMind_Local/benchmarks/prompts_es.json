@@ -1,0 +1,66 @@
+{
+  "_comment": "Prompts fijos en espanol para benchmark local. Mismos prompts -> misma base para comparar modelos. Edita libremente, pero no borres 'key' ni 'prompt'. La UI muestra los titulos en la pestana Benchmark.",
+
+  "prompts": [
+    {
+      "key": "resumen_corto",
+      "title": "Resumen corto",
+      "system": "",
+      "prompt": "Resumi en 3 lineas el siguiente parrafo: 'La inteligencia artificial local ha madurado rapidamente gracias a cuantizaciones como Q4_K_M, que permiten correr modelos de 7B-14B en hardware modesto. El truco esta en preservar la mayor parte del comportamiento del modelo original mientras se reduce el uso de RAM y disco. Esto democratiza el acceso a LLMs sin depender de la nube.'"
+    },
+    {
+      "key": "resumen_largo",
+      "title": "Resumen largo",
+      "system": "",
+      "prompt": "Hacé un resumen ejecutivo (max 200 palabras) del siguiente texto, conservando los datos clave: 'El usuario quiere comparar tres modelos GGUF locales en una PC con Windows 10, 16 GB de RAM y una GPU AMD Radeon RX550 con 4 GB de VRAM. Los modelos candidatos son Gemma 4 12B, Qwen3-14B y Phi-4 14B, todos en cuantizacion Q4. La app debe medir tokens/s, RAM peak, latencia y calidad percibida en espanol. La prioridad es tener una herramienta personal, local y offline para decidir que modelo usar en el dia a dia.'"
+    },
+    {
+      "key": "auditoria_tecnica",
+      "title": "Auditoria tecnica de un fragmento",
+      "system": "",
+      "prompt": "Hacé una auditoria tecnica del siguiente fragmento de codigo Python. Lista: (1) problemas de seguridad, (2) problemas de robustez, (3) posibles bugs, (4) sugerencias concretas. Fragmento:\n\n```python\ndef load_config(path):\n    import json, os\n    data = open(path).read()\n    return json.loads(data)\n\ndef run_model(cfg):\n    os.system(f'llama-cli -m {cfg[\"gguf_path\"]} -p \"{cfg[\"prompt\"]}\"')\n```"
+    },
+    {
+      "key": "explicacion_simple",
+      "title": "Explicacion simple",
+      "system": "",
+      "prompt": "Explicá en lenguaje sencillo, como si fuera para alguien sin formacion tecnica, que es una cuantizacion Q4_K_M en modelos GGUF y por que importa para correr LLMs en una PC comun."
+    },
+    {
+      "key": "coding",
+      "title": "Tarea de coding",
+      "system": "",
+      "prompt": "Escribí una funcion Python `parse_gguf_metadata(path)` que lea los primeros 8 KB de un archivo .gguf y devuelva un dict con `magic` (4 bytes), `version` (int) y `tensor_count` (int). El archivo usa little-endian. Mostrá el codigo y un ejemplo de uso."
+    },
+    {
+      "key": "razonamiento",
+      "title": "Razonamiento logico",
+      "system": "",
+      "prompt": "Tres amigos (Ana, Beto, Caro) tienen edades distintas: 22, 25 y 30. - Caro NO tiene 22. - Beto es mayor que Ana. - La suma de las edades de Ana y Beto es 47. Cual es la edad de cada uno? Mostrá el razonamiento paso a paso."
+    },
+    {
+      "key": "planificacion_diaria",
+      "title": "Planificacion diaria",
+      "system": "",
+      "prompt": "Tengo 90 minutos para hacer estas 4 tareas: responder 5 correos importantes (15 min c/u si me apuro), avanzar un script de benchmarking (45 min), una reunion breve con un contacto (20 min) y una caminata para despejarme (20 min). Como ordenarias el dia? Justificá brevemente."
+    },
+    {
+      "key": "respuesta_larga_controlada",
+      "title": "Respuesta larga controlada",
+      "system": "",
+      "prompt": "Escribí una explicacion de ~400 palabras sobre por que conviene medir antes que creerle al marketing de los modelos. Incluí al menos 4 criterios practicos (RAM, latencia, tokens/s, calidad en espanol, estabilidad). Termina con una recomendacion concreta: no declarar un ganador sin medir localmente."
+    },
+    {
+      "key": "correccion_texto",
+      "title": "Correccion de texto",
+      "system": "",
+      "prompt": "Corregí el siguiente texto en espanol. Mantené el tono pero arreglá ortografia, gramatica y puntuacion. Devolvé solo el texto corregido:\n\n'Ayer fui al super mercado y compre varias cosas entre ellas pan leche y tambien algunas frutas como bananas y manzanas pero me olvide de comprar el cafe que era lo que mas necesitaba por que sin cafe no puedo arrancar el dia'"
+    },
+    {
+      "key": "analisis_critico",
+      "title": "Analisis critico",
+      "system": "",
+      "prompt": "Analizá criticamente la siguiente afirmacion: 'Un modelo de 14B en cuantizacion Q4_K_M siempre es mejor que uno de 7B en Q8 para tareas de coding en espanol.' Lista al menos 3 razones por las que podria NO ser cierto y una condicion bajo la cual SI lo seria."
+    }
+  ]
+}
