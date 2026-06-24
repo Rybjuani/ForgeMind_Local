@@ -150,3 +150,104 @@ class TestComposerWiringV14:
         win.refresh_sidebar_model_card()
         # The label exists
         assert win.chat_screen.model_pill_label.text() != ""
+
+class TestShimmerProgressBar:
+    """ShimmerProgressBar — mockup v14 L1312-1331 @keyframes shimmer.
+
+    The mockup animates a white-15% gradient across the progress
+    bar's filled chunk (CSS @keyframes shimmer). Qt QSS ignores
+    @keyframes, so we use a QPropertyAnimation driving a custom
+    `phase` property and paint the gradient in paintEvent.
+    """
+
+    def test_can_be_constructed(self, qt_app, win) -> None:
+        from app.ui_main import ShimmerProgressBar
+        bar = ShimmerProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(50)
+        assert bar._phase == -1.0  # initial phase
+
+    def test_phase_property_roundtrip(self, qt_app, win) -> None:
+        from app.ui_main import ShimmerProgressBar
+        bar = ShimmerProgressBar()
+        bar.set_phase(0.5)
+        assert bar._phase == 0.5
+
+    def test_animation_starts_on_show(self, qt_app, win) -> None:
+        from PyQt6.QtCore import QAbstractAnimation
+        from app.ui_main import ShimmerProgressBar
+        bar = ShimmerProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(50)
+        bar.resize(100, 8)
+        bar.show()
+        qt_app.processEvents()
+        assert bar._anim.state() == QAbstractAnimation.State.Running
+
+    def test_animation_pauses_on_hide(self, qt_app, win) -> None:
+        from PyQt6.QtCore import QAbstractAnimation
+        from app.ui_main import ShimmerProgressBar
+        bar = ShimmerProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(50)
+        bar.resize(100, 8)
+        bar.show()
+        qt_app.processEvents()
+        bar.hide()
+        qt_app.processEvents()
+        assert bar._anim.state() == QAbstractAnimation.State.Paused
+
+    def test_animation_advances_phase(self, qt_app, win) -> None:
+        from PyQt6.QtCore import QTimer
+        from app.ui_main import ShimmerProgressBar
+        bar = ShimmerProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(50)
+        bar.resize(100, 8)
+        bar.show()
+        qt_app.processEvents()
+        # Snapshot phase, wait 200ms, snapshot again. The animation
+        # should have advanced phase from -1.0 toward +1.0.
+        before = bar._phase
+        done = []
+
+        def check():
+            done.append(1)
+            qt_app.quit()
+
+        QTimer.singleShot(200, check)
+        qt_app.exec()
+        assert done, "QTimer did not fire"
+        # Phase moves forward (less negative) over time.
+        assert bar._phase > before, (
+            f"phase did not advance: before={before} after={bar._phase}"
+        )
+
+    def test_paint_event_does_not_crash_on_empty(self, qt_app, win) -> None:
+        """paintEvent with value=0 should early-return before QPainter."""
+        from PyQt6.QtGui import QPixmap
+        from app.ui_main import ShimmerProgressBar
+        bar = ShimmerProgressBar()
+        bar.setRange(0, 100)
+        bar.setValue(0)  # empty bar
+        bar.resize(100, 8)
+        bar.show()
+        pm = QPixmap(bar.size())
+        bar.render(pm)  # triggers paintEvent
+        # No assertion needed — if paintEvent crashed the test errors.
+
+    def test_metric_tile_bars_use_shimmer(self, qt_app, win) -> None:
+        """All 4 MetricTile bars in MetricsScreen should be ShimmerProgressBar."""
+        from app.ui_main import ShimmerProgressBar
+        from PyQt6.QtWidgets import QProgressBar
+        for tile in (
+            win.metrics_screen.tile_rss,
+            win.metrics_screen.tile_tps,
+            win.metrics_screen.tile_first,
+            win.metrics_screen.tile_ram,
+        ):
+            assert isinstance(tile.bar, ShimmerProgressBar), (
+                f"{tile.lbl.text()!r} bar is not a ShimmerProgressBar"
+            )
+            # And it MUST be a QProgressBar too (subclass relationship).
+            assert isinstance(tile.bar, QProgressBar)

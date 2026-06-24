@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import (
+    QAbstractAnimation,
     QEasingCurve,
     QPoint,
     QPropertyAnimation,
@@ -31,9 +32,18 @@ from PyQt6.QtCore import (
     Qt,
     QThread,
     QTimer,
+    pyqtProperty,
     pyqtSignal,
 )
-from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from PyQt6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QIcon,
+    QLinearGradient,
+    QPainter,
+    QPixmap,
+)
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -1757,6 +1767,87 @@ class Sidebar(QFrame):
 # Reusable widgets
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# ShimmerProgressBar — animated shimmer overlay on a QProgressBar.
+#
+# Mockup v14 L1312-1331: the bar's "::after" pseudo-element paints a
+# translating white-15% gradient that loops every 2.4s. CSS
+# @keyframes is silently ignored by Qt QSS, so we drive the same
+# effect with a QPropertyAnimation on a custom `phase` property and
+# paint the gradient inside the bar's paintEvent (after QProgressBar
+# has drawn the chunk). This way the shimmer only appears over the
+# FILLED portion of the bar, exactly like the CSS version.
+# ---------------------------------------------------------------------------
+
+class ShimmerProgressBar(QProgressBar):
+    """QProgressBar with an animated white-shimmer overlay."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # `phase` runs from -1.0 (gradient fully off-screen LEFT) to
+        # +1.0 (gradient fully off-screen RIGHT). The gradient itself
+        # is 1 widget-width wide and is translated by `phase * width`.
+        self._phase: float = -1.0
+        self._anim = QPropertyAnimation(self, b"phase")
+        self._anim.setStartValue(-1.0)
+        self._anim.setEndValue(1.0)
+        self._anim.setDuration(2400)
+        self._anim.setLoopCount(-1)  # infinite
+        self._anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+    def get_phase(self) -> float:
+        return self._phase
+
+    def set_phase(self, v: float) -> None:
+        # Backing field write (never store via the descriptor to avoid
+        # the recursion trap documented in pyqt6-styling-pitfalls §3).
+        self._phase = v
+        self.update()
+
+    phase = pyqtProperty(float, fget=get_phase, fset=set_phase)
+
+    def showEvent(self, a0) -> None:  # noqa: N802
+        # Start the animation only when the bar is actually visible.
+        if self._anim.state() != QAbstractAnimation.State.Running:
+            self._anim.start()
+        super().showEvent(a0)
+
+    def hideEvent(self, a0) -> None:  # noqa: N802
+        # Pause the animation when hidden so it doesn't burn CPU on
+        # off-screen tiles (e.g. while the user is on the Chat tab).
+        self._anim.pause()
+        super().hideEvent(a0)
+
+    def paintEvent(self, a0) -> None:  # noqa: N802
+        # Let QProgressBar draw its background + chunk first.
+        super().paintEvent(a0)
+        # Skip the shimmer when the bar is empty — there's nothing to
+        # shimmer over. Mirrors the CSS spec which only paints ::after
+        # inside the chunk.
+        if self.maximum() <= self.minimum():
+            return
+        fraction = (self.value() - self.minimum()) / (
+            self.maximum() - self.minimum()
+        )
+        if fraction <= 0.0:
+            return
+        chunk_w = int(self.width() * fraction)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        # Translate the canvas by `phase * chunk_w` so the gradient
+        # moves across the chunk. The gradient is chunk_w-wide so at
+        # phase=-1 it's entirely off-screen LEFT, at phase=0 it's
+        # centred on the chunk, at phase=+1 it's entirely off-screen
+        # RIGHT — exactly mirroring the CSS translateX(-100%) -> 100%.
+        p.translate(chunk_w * self._phase, 0)
+        grad = QLinearGradient(0, 0, chunk_w, 0)
+        grad.setColorAt(0.0, QColor(255, 255, 255, 0))
+        grad.setColorAt(0.5, QColor(255, 255, 255, 38))  # 0.15 * 255
+        grad.setColorAt(1.0, QColor(255, 255, 255, 0))
+        p.fillRect(0, 0, chunk_w, self.height(), QBrush(grad))
+        p.end()
+
+
 class MetricTile(QFrame):
     def __init__(self, label: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1777,7 +1868,7 @@ class MetricTile(QFrame):
             "background: transparent; border: 0;"
         )
         lay.addWidget(self.val)
-        self.bar = QProgressBar(self)
+        self.bar = ShimmerProgressBar(self)
         self.bar.setRange(0, 100)
         self.bar.setValue(0)
         self.bar.setTextVisible(False)
