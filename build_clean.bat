@@ -21,7 +21,7 @@ echo     5. Abre dist\ al terminar
 echo.
 echo ------------------------------------------------------------
 
-REM ----- 0. Borrar build/ y dist/ -----
+REM ----- 0. Borrar build/ y dist/ y __pycache__ -----
 if exist "build" (
     echo [0/5] Borrando build\ ...
     rmdir /s /q "build"
@@ -30,6 +30,9 @@ if exist "dist" (
     echo [0/5] Borrando dist\ ...
     rmdir /s /q "dist"
 )
+echo [0/5] Borrando __pycache__ ...
+if exist "app\__pycache__" rmdir /s /q "app\__pycache__" 2>nul
+if exist "tests\__pycache__" rmdir /s /q "tests\__pycache__" 2>nul
 
 REM ----- 1. Localizar Python -----
 if exist ".venv\Scripts\python.exe" (

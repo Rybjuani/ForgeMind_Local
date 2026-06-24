@@ -24,7 +24,6 @@ if not exist "%DESKTOP%" (
 
 set "TARGET=%~dp0INICIAR.bat"
 set "SHORTCUT=%DESKTOP%\ForgeMind Local.lnk"
-set "ICON=%~dp0app\assets\fonts\Newsreader-Variable.ttf"
 
 if not exist "%TARGET%" (
     echo   [ERROR] No se encontro INICIAR.bat en:
@@ -36,15 +35,7 @@ if not exist "%TARGET%" (
 REM --- Crear el .lnk via PowerShell ---
 echo   Creando acceso: %SHORTCUT%
 echo.
-powershell -NoProfile -Command ^
-    "$ws = New-Object -ComObject WScript.Shell; " ^
-    "$sc = $ws.CreateShortcut('%SHORTCUT%'); " ^
-    "$sc.TargetPath = '%TARGET%'; " ^
-    "$sc.WorkingDirectory = '%~dp0'; " ^
-    "$sc.IconLocation = '%SystemRoot%\System32\shell32.dll,13'; " ^
-    "$sc.Description = 'ForgeMind Local - LLM lab'; " ^
-    "$sc.WindowStyle = 7; " ^
-    "$sc.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%SHORTCUT%'); $sc.TargetPath = '%TARGET%'; $sc.WorkingDirectory = '%~dp0'; $sc.IconLocation = '%SystemRoot%\System32\shell32.dll,13'; $sc.Description = 'ForgeMind Local - LLM lab'; $sc.WindowStyle = 7; $sc.Save()"
 
 if errorlevel 1 (
     echo.

@@ -21,12 +21,15 @@ App desktop para comparar modelos GGUF locales en Windows 10. Sin cloud, sin cla
 
 Doble click en **`INICIAR.bat`** en la carpeta del proyecto. La primera vez:
 1. Detecta o crea un venv con Python + PyQt6 + psutil + PyInstaller.
-2. Empaqueta `dist\ForgeMind.exe` (1-3 minutos).
-3. Abre la app automaticamente.
+2. Limpia cache vieja (`__pycache__`, `build/`, `.exe` anterior).
+3. Empaqueta `dist\ForgeMind.exe` (1-3 minutos).
+4. Abre la app automaticamente.
 
 Las siguientes veces abre directo en 1 segundo (reusa el `.exe`).
 
 Para tener un icono en el escritorio: doble click en **`Crear acceso.bat`**.
+
+**Si la app no abre o se cierra al instante**: doble click en **`DEPURAR.bat`** — abre la app mostrando la consola negra para que veas el error completo (traceback). Copialo con click derecho → Marcar → seleccionar → Enter.
 
 ## Quick start (PowerShell nativo)
 
@@ -108,8 +111,10 @@ ForgeMind_Local/
   run.py              # entry shim para PyInstaller
   forgemind.spec      # spec de PyInstaller
   INICIAR.bat         # doble click para abrir la app (buildea si hace falta)
+  DEPURAR.bat         # abre con consola visible para ver errores
   Crear acceso.bat    # crea icono en el escritorio
-  build.bat           # genera dist\ForgeMind.exe
+  build.bat           # genera dist\ForgeMind.exe (limpia cache)
+  build_clean.bat     # idem pero borra build/ y dist/ antes
 ```
 
 ## Tests

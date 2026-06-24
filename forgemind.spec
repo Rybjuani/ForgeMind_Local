@@ -22,12 +22,16 @@ ROOT = Path(SPECPATH).resolve()
 
 # Hidden imports: PyQt6 entero + submodulos que PyInstaller a veces no detecta.
 # psutil y urllib ya son stdlib-friendly, pero por las dudas los listamos.
+# app.chat_history se importa lazy (from . import chat_history dentro de
+# metodos de MainWindow) → PyInstaller no lo detecta via analisis estatico,
+# hay que listarlo explicitamente.
 hidden = (
     collect_submodules("PyQt6")
     + [
         "psutil",
         "urllib.request",
         "urllib.error",
+        "app.chat_history",
         # NO incluimos llama_cpp ni cryptography: son opcionales y agregan MBs.
     ]
 )
