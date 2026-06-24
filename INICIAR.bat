@@ -3,12 +3,7 @@ REM ============================================================
 REM  ForgeMind Local - INICIAR.bat
 REM  Doble click para abrir la app de forma amigable.
 REM
-REM  Que hace:
-REM    1. Si existe dist\ForgeMind.exe  ->  lo abre directo
-REM    2. Si NO existe                  ->  buildea y abre
-REM    3. Si falla el build             ->  abre en modo python (dev)
-REM
-REM  No requiere saber Python ni linea de comandos.
+REM  ASCII PURO (sin acentos) para que cmd.exe no se clave.
 REM ============================================================
 title ForgeMind Local
 cd /d "%~dp0"
@@ -37,7 +32,7 @@ echo   primera vez (descarga PyQt6 + empaqueta). Las siguientes
 echo   veces abre directo en 1 segundo.
 echo.
 echo   Si preferis no esperar y abrir en modo desarrollo
-echo   (requiere Python instalado), respondé N abajo.
+echo   (requiere Python instalado), responde N abajo.
 echo.
 set /p CONFIRM=Generar el .exe ahora? [S/N]: 
 if /i not "%CONFIRM%"=="S" (

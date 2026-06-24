@@ -378,12 +378,12 @@ QPushButton[danger="true"]:hover { background: rgba(216,138,131,0.14); }
 
 /* === Status pill === (true pill shape per mockup) */
 QFrame#StatusPill {
-    background: #2d3a2d; border: 1px solid #4a5a4a;
+    background: #3a5040; border: 1px solid #5a7a5a;
     border-radius: 999px;
 }
-QFrame#StatusPill QLabel { color: #8ab589; font-size: 10.5px; font-weight: 500; background: transparent; }
+QFrame#StatusPill QLabel { color: #9ec89e; font-size: 10.5px; font-weight: 500; background: transparent; }
 QFrame#StatusPill QLabel#PillDot {
-    background: #8ab589; border-radius: 3px;
+    background: #9ec89e; border-radius: 3px;
     min-width: 6px; max-width: 6px; min-height: 6px; max-height: 6px;
 }
 QFrame#StatusPill[idle="true"] {
