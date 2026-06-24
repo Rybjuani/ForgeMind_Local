@@ -158,6 +158,34 @@ QFrame[role="divider"] { background: #34312e; max-height: 1px; min-height: 1px; 
     min-width: 6px; max-width: 6px; min-height: 6px; max-height: 6px;
 }
 #TitleBar QLabel#StatusDot[idle="true"] { background: #787469; }
+
+/* Title-tabs (mockup v14 L688-712) — pill with Chat/Benchmark/Code */
+QFrame#TitleTabsFrame {
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.075);
+    border-radius: 999px;
+    padding: 2px;
+}
+QFrame#TitleTabsFrame QPushButton#TitleTab {
+    background: transparent;
+    color: #a8a499;
+    border: 0;
+    border-radius: 999px;
+    height: 21px;
+    min-width: 56px; max-width: 90px;
+    padding: 0 11px;
+    font-size: 11.5px;
+    font-weight: 550;
+    margin: 0 1px;
+}
+QFrame#TitleTabsFrame QPushButton#TitleTab:hover {
+    color: #d8d4c8;
+}
+QFrame#TitleTabsFrame QPushButton#TitleTab:checked {
+    background: #383531;
+    color: #f5f4ee;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
 #WinBtn {
     background: transparent;
     border: none;
@@ -1052,18 +1080,39 @@ class TitleBar(QFrame):
 
         layout.addStretch(1)
 
-        # --- CENTER: model status (with green dot indicator) ---
+        # --- CENTER: title-tabs (Chat / Benchmark / Code) + model status
+        # Mockup v14 L688-712. The tabs are decorative ("modo" indicator)
+        # in a single-mode app, so they don't navigate — clicking a tab
+        # is a no-op (or jumps to the matching screen). Real interaction
+        # is on the sidebar nav.
+        self.title_tabs_frame = QFrame(self)
+        self.title_tabs_frame.setObjectName("TitleTabsFrame")
+        tt_lay = QHBoxLayout(self.title_tabs_frame)
+        tt_lay.setContentsMargins(0, 0, 0, 0)
+        tt_lay.setSpacing(0)
+        self.title_tabs: dict[str, QPushButton] = {}
+        for tab_key, tab_label in [
+            ("chat", "Chat"),
+            ("benchmark", "Benchmark"),
+            ("code", "Code"),
+        ]:
+            tab = QPushButton(tab_label, self.title_tabs_frame)
+            tab.setObjectName("TitleTab")
+            tab.setCheckable(True)
+            tab.setProperty("tab", tab_key)
+            tab.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.title_tabs[tab_key] = tab
+            tt_lay.addWidget(tab)
+        layout.addWidget(self.title_tabs_frame)
+
+        # Status row: green dot + "model · quant · size · backend"
         self.status_model = QLabel("(sin modelo)", self)
         layout.addWidget(self.status_model)
-        sep = QLabel("·", self)
-        layout.addWidget(sep)
-        # green status dot (mockup L1760)
         self.status_dot = QLabel(self)
         self.status_dot.setObjectName("StatusDot")
         self.status_dot.setProperty("idle", "true")
+        self.status_dot.setFixedSize(6, 6)
         layout.addWidget(self.status_dot)
-        sep2 = QLabel("·", self)
-        layout.addWidget(sep2)
         self.status_backend = QLabel("", self)
         layout.addWidget(self.status_backend)
 
@@ -2002,7 +2051,7 @@ class ChatScreen(QWidget):
         sub.setObjectName("ChatEmptySub")
         sub.setStyleSheet(
             "color: #a8a499; font-size: 13px; background: transparent; "
-            "border: 0; max-width: 720px;"
+            "border: 0; max-width: 840px;"
         )
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub.setWordWrap(True)
@@ -2564,6 +2613,15 @@ class ConfigScreen(QWidget):
         # ~40px wide and the labels stay huge.
         form1.setColumnStretch(0, 0)
         form1.setColumnStretch(1, 1)
+        # Force col 0 to at least 180px so long labels ("Max tokens
+        # respuesta", "GPU layers (0 = off)") never wrap and overlap
+        # the input column on wide windows. Combined with setStretch(0)
+        # this means: col 0 = max(label natural, 180), col 1 = rest.
+        form1.setColumnMinimumWidth(0, 180)
+        # Spacious rows so labels and inputs have breathing room
+        # (default Qt row height collapses everything to a tight stack).
+        for _r in range(11):
+            form1.setRowMinimumHeight(_r, 26)
 
         form1.addWidget(_make_field_label("Archivo .gguf"), 0, 0, 1, 2)
         gguf_row = QHBoxLayout()
@@ -2606,6 +2664,17 @@ class ConfigScreen(QWidget):
         form1.addWidget(self.sb_max, 6, 1)
 
         # Sliders row: temp / top_p / repeat penalty (with inline accent value + value box)
+        # QStackedWidget doesn't cascade QSS to type selectors, so we set
+        # the SliderValue styling inline on each label (keeps in sync with
+        # the `#SliderValue` rule in QSS for top-level widgets).
+        slider_value_ss = (
+            "color: #d8d4c8; background: #151413; "
+            "border: 1px solid #34312e; border-radius: 4px; "
+            "padding: 2px 8px; min-width: 60px; min-height: 22px; "
+            "font-family: 'JetBrains Mono', 'Consolas', monospace; "
+            "font-size: 12.5px; qproperty-alignment: AlignCenter;"
+        )
+
         self.lbl_temp_field = _make_field_label("Temperatura")
         form1.addWidget(self.lbl_temp_field, 7, 0)
         temp_row = QHBoxLayout()
@@ -2614,6 +2683,7 @@ class ConfigScreen(QWidget):
         self.lbl_temp_val.setObjectName("SliderValue")
         self.lbl_temp_val.setMinimumWidth(56)
         self.lbl_temp_val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_temp_val.setStyleSheet(slider_value_ss)
         temp_row.addWidget(self.slider_temp, 1)
         temp_row.addWidget(self.lbl_temp_val)
         form1.addLayout(temp_row, 7, 1)
@@ -2626,6 +2696,7 @@ class ConfigScreen(QWidget):
         self.lbl_topp_val.setObjectName("SliderValue")
         self.lbl_topp_val.setMinimumWidth(56)
         self.lbl_topp_val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_topp_val.setStyleSheet(slider_value_ss)
         topp_row.addWidget(self.slider_topp, 1)
         topp_row.addWidget(self.lbl_topp_val)
         form1.addLayout(topp_row, 8, 1)
@@ -2638,6 +2709,7 @@ class ConfigScreen(QWidget):
         self.lbl_rep_val.setObjectName("SliderValue")
         self.lbl_rep_val.setMinimumWidth(56)
         self.lbl_rep_val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_rep_val.setStyleSheet(slider_value_ss)
         rep_row.addWidget(self.slider_rep, 1)
         rep_row.addWidget(self.lbl_rep_val)
         form1.addLayout(rep_row, 9, 1)
@@ -2668,6 +2740,9 @@ class ConfigScreen(QWidget):
         form2.setVerticalSpacing(12)
         form2.setColumnStretch(0, 0)
         form2.setColumnStretch(1, 1)
+        form2.setColumnMinimumWidth(0, 180)
+        for _r in range(8):
+            form2.setRowMinimumHeight(_r, 26)
         form2.addWidget(_make_field_label("Tipo de backend"), 0, 0, 1, 2)
         self.cmb_backend_kind = QComboBox()
         # Mockup L2033-2038: descriptive labels (keep the bare key as item data
@@ -2862,7 +2937,17 @@ class ConfigScreen(QWidget):
 def _make_field_label(text: str) -> QLabel:
     # Claude desktop: field labels are Title Case (NOT UPPERCASE),
     # 11.5px, weight 500, color text-3. No letter-spacing.
+    #
+    # Width is fixed at 180px so col 0 doesn't collapse to the
+    # shortest label's natural width (~50px). Height is left at
+    # the natural font metrics via Preferred size policy — using
+    # setFixedWidth also locks height to 0 (Qt caches a stale
+    # sizeHint during construction).
     l = QLabel(text)
+    l.setMinimumWidth(180)
+    l.setMaximumWidth(180)
+    l.setMinimumHeight(18)  # ensures the row has visible vertical space
+    l.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
     l.setStyleSheet(
         "color: #a8a499; font-size: 11.5px; font-weight: 500; "
         "background: transparent; border: 0;"
@@ -3584,6 +3669,7 @@ class MainWindow(QMainWindow):
             "QPushButton#HeaderNewChat { background: rgba(255,255,255,0.055); "
             "color: #d8d4c8; border: 1px solid rgba(255,255,255,0.075); "
             "border-radius: 8px; padding: 0 12px; min-height: 28px; "
+            "min-width: 130px; "
             "font-size: 12.5px; font-weight: 500; }"
             "QPushButton#HeaderNewChat:hover { background: rgba(255,255,255,0.085); "
             "color: #f5f4ee; border-color: rgba(255,255,255,0.12); }"
@@ -3835,6 +3921,11 @@ class MainWindow(QMainWindow):
         self.btn_cmdk.clicked.connect(self._open_palette)
         if hasattr(self, "btn_header_new_chat"):
             self.btn_header_new_chat.clicked.connect(self._on_new_chat)
+        # Title-tabs (decorative mode indicator — click navigates to the
+        # matching screen and marks the tab as active).
+        if hasattr(self.titlebar, "title_tabs"):
+            for key, tab in self.titlebar.title_tabs.items():
+                tab.clicked.connect(lambda _=False, k=key: self._on_title_tab_click(k))
 
     # ---------- keyboard shortcuts ----------
     def eventFilter(self, obj, ev) -> bool:  # noqa: N802
@@ -3958,10 +4049,37 @@ class MainWindow(QMainWindow):
         is_chat = (screen_id == "chat")
         if hasattr(self, "btn_header_new_chat"):
             self.btn_header_new_chat.setVisible(is_chat)
+        # Sync title-tab active state (decorative: the tab tracks the
+        # nearest matching section — chat/benchmark/code). For other
+        # screens (config, metrics, presets, gpu) we leave the previous
+        # tab active; clicking the tab is what jumps to the screen.
+        if hasattr(self.titlebar, "title_tabs"):
+            tab_map = {"chat": "chat", "benchmark": "benchmark"}
+            tab_key = tab_map.get(screen_id)
+            for k, tab in self.titlebar.title_tabs.items():
+                tab.setChecked(k == tab_key)
         if screen_id == "metrics":
             self.refresh_metrics()
         elif screen_id == "benchmark":
             self.refresh_bench_runs()
+
+    def _on_title_tab_click(self, tab_key: str) -> None:
+        """Title-tab click → jump to the matching screen.
+
+        The three tabs are: chat, benchmark, code. "code" is a hint
+        that there is no dedicated Code screen in v0.3, so it goes to
+        chat (the only mode that supports prompts) and toasts a note.
+        """
+        if tab_key == "chat":
+            self._switch_screen("chat")
+        elif tab_key == "benchmark":
+            self._switch_screen("benchmark")
+        elif tab_key == "code":
+            # No dedicated Code screen — keep the user in Chat and toast.
+            self._switch_screen("chat")
+            self._show_toast("Code viene en v0.4 — por ahora usá Coding (preset)")
+        # Ensure the clicked tab is checked (the lambda already ran
+        # setChecked indirectly via _switch_screen → tab sync block).
 
     def _toggle_sidebar(self) -> None:
         self._sidebar_collapsed = not self._sidebar_collapsed
