@@ -229,6 +229,10 @@ def _populate_search_dirs() -> None:
     # 1. The ForgeMind config dir (drop .gguf here!)
     _GGUF_SEARCH_DIRS.append(here / "models")
     _GGUF_SEARCH_DIRS.append(here)
+    # Bundled starter GGUF lives in bin/ (the .exe ships llama.cpp binaries
+    # + qwen2.5-1.5b-instruct-q4_k_m.gguf here). Include bin/ so
+    # first_run_setup auto-detects the bundled model on a fresh install.
+    _GGUF_SEARCH_DIRS.append(here / "bin")
     # 2. Standard "I keep my models here" locations
     for cand in (
         Path("C:/modelos"),
@@ -249,8 +253,14 @@ def find_llama_cli() -> str | None:
     Returns the full path as a string, or ``None`` if not found. PATH
     is searched first (most common case: user installed via winget /
     choco / scoop / installer), then the well-known local dirs.
+
+    We look for both ``llama-cli`` and ``llama-cli.exe`` on every
+    platform: llama.cpp Windows builds are commonly dropped into a
+    ``models/`` folder on Linux/macOS too (e.g. shared via SMB, copied
+    from a Windows machine), and the .exe suffix should not prevent
+    detection in that case.
     """
-    exe_names = ["llama-cli.exe", "llama-cli"] if os.name == "nt" else ["llama-cli"]
+    exe_names = ["llama-cli", "llama-cli.exe"]
     for name in exe_names:
         hit = shutil.which(name)
         if hit:
@@ -268,7 +278,7 @@ def find_llama_cli() -> str | None:
 
 def find_llama_server() -> str | None:
     """Same as :func:`find_llama_cli` but for ``llama-server``."""
-    exe_names = ["llama-server.exe", "llama-server"] if os.name == "nt" else ["llama-server"]
+    exe_names = ["llama-server", "llama-server.exe"]
     for name in exe_names:
         hit = shutil.which(name)
         if hit:
@@ -374,15 +384,21 @@ def first_run_setup(*, interactive: bool = True) -> dict[str, Any]:
     gguf = find_gguf()
     if gguf:
         settings["model"]["gguf_path"] = gguf
-        # Best-effort: name the model from the filename (without ext / quant)
-        name = Path(gguf).stem
-        for q in ("Q4_K_M", "Q4_K_S", "Q4_0", "Q5_K_M", "Q6_K", "Q8_0",
-                  "Q3_K_M", "Q2_K", "F16", "F32"):
-            if q.lower() in name.lower():
-                name = name.replace(q, "").replace(q.lower(), "").strip("._- ")
-                break
-        if name:
-            settings["model"]["name"] = name
+        # Use ModelConfig.pretty_name to convert
+        # 'qwen2.5-1.5b-instruct-q4_k_m.gguf' into 'Qwen2.5 1.5B Instruct'
+        # so the sidebar + composer pills show a human-readable name on
+        # first run instead of a raw slug.
+        try:
+            from .model_config import ModelConfig
+            cfg_tmp = ModelConfig(gguf_path=gguf)
+            if cfg_tmp.exists():
+                pretty = cfg_tmp.pretty_name
+                if pretty:
+                    settings["model"]["name"] = pretty
+                settings["model"]["quant"] = cfg_tmp.quant or ""
+                settings["model"]["size_human"] = cfg_tmp.size_human or ""
+        except Exception:
+            pass
 
     # 4. Auto-arrancar el backend al abrir si tenemos modelo + cli.
     #    Si no encontramos nada, dejamos False para no estorbar al usuario

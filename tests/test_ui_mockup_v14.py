@@ -35,13 +35,18 @@ def qt_app():
 
 @pytest.fixture()
 def win(qt_app, tmp_path: Path):
-    """Build a MainWindow with no model detected (forces first_run needs).
+    """Build a MainWindow with no real model detected.
 
-    The smoke_all_screens.py harness disables the wizard via a flag,
-    but here we exercise the production code path: ``first_run_setup``
-    returns settings WITHOUT a model, so ``_first_run_needs_setup``
-    is True. The test then asserts that the wizard still does NOT
-    auto-trigger.
+    Two complementary invariants are exercised:
+    1. With ``MOCK_LLM=1`` (default in this test module), MainWindow
+       injects a demo ModelConfig ("Gemma 4 12B") so the UI shows
+       "Activo" — ``_first_run_needs_setup`` becomes False because
+       the demo model is considered loaded.
+    2. Without ``MOCK_LLM`` (cleared per-test via ``monkeypatch`` in
+       the dedicated test below), the real first-run path is taken
+       and ``_first_run_needs_setup`` is True.
+
+    Either way, the wizard MUST NOT auto-trigger.
     """
     s = auto_config.first_run_setup(interactive=False)
     # Inject a benign settings dict with no model/cli so the wizard
@@ -58,9 +63,31 @@ def win(qt_app, tmp_path: Path):
 class TestFirstRunWizardKilled:
     """The first-launch wizard must NEVER auto-trigger."""
 
-    def test_first_run_needs_setup_is_true(self, win) -> None:
-        """Sanity check: this fixture sets up the first-run state."""
-        assert win._first_run_needs_setup is True
+    def test_first_run_needs_setup_is_false_under_mock(self, win) -> None:
+        """Sanity check: under MOCK_LLM=1 the demo model is loaded so
+        first-run needs no setup. This protects the visual invariant
+        that the sidebar shows "Activo" + Gemma 4 12B in mock mode."""
+        # MOCK_LLM=1 is set at module load time → mock mode kicks in
+        # → demo ModelConfig → _first_run_needs_setup = False.
+        assert win._mock_mode is True
+        assert win._first_run_needs_setup is False
+
+    def test_first_run_needs_setup_is_true_without_mock(
+        self, qt_app, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Without MOCK_LLM, an empty gguf_path keeps first-run needs True."""
+        monkeypatch.delenv("MOCK_LLM", raising=False)
+        s = auto_config.first_run_setup(interactive=False)
+        s.setdefault("model", {})
+        s["model"]["gguf_path"] = ""
+        s["model"]["name"] = ""
+        win = MainWindow(initial_settings=s)
+        try:
+            assert win._mock_mode is False
+            assert win._first_run_needs_setup is True
+        finally:
+            win.close()
+            win.deleteLater()
 
     def test_no_modal_dialog_after_event_loop(self, qt_app, win) -> None:
         """Run the event loop for ~1s and verify no QDialog opens."""

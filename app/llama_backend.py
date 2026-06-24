@@ -111,6 +111,16 @@ class LlamaBackend(BackendBase):
 
     def _resolve_mode(self) -> None:
         """Decide que modo usar segun config.backend_kind y disponibilidad."""
+        # 0) Demo mode (MOCK_LLM=1): short-circuit to mock so the UI
+        # shows "Activo" + Gemma 4 12B without spawning any subprocess.
+        # The DemoModelConfig.exists() lies and returns True so the
+        # config screen displays OK status, but we never actually try
+        # to invoke llama-cli with a fake path.
+        if getattr(self.config, "is_demo", False):
+            self._mock = True
+            self._backend_kind_active = "mock"
+            self._load_error = None
+            return
         # 1) binding Python (si lo pidio el usuario Y esta disponible)
         if self.config.backend_kind == "llama_cpp":
             if not self.config.exists():
