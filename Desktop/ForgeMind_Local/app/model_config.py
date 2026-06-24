@@ -95,6 +95,163 @@ class ModelConfig:
     def size_human(self) -> str:
         return human_size(self.size_bytes)
 
+    @property
+    def pretty_name(self) -> str:
+        """Human-friendly model name derived from the GGUF filename.
+
+        Converts patterns like ``qwen2.5-1.5b-instruct-q4_k_m.gguf``
+        into ``Qwen 2.5 1.5B Instruct`` (drops the quant suffix, adds
+        spaces, capitalises family names + size tokens). Used by the
+        sidebar model card and the chat composer pill so the UI shows
+        a readable name instead of a slug.
+
+        Falls back to the raw stem (title-cased) if no family pattern
+        matches.
+        """
+        from pathlib import Path
+        import re
+        if not self.gguf_path:
+            return ""
+        stem = Path(self.gguf_path).stem
+        # Drop the quant suffix (Q4_K_M, Q5_K_M, Q8_0, ...) and the
+        # optional trailing dash / underscore.
+        stem = re.sub(
+            r"[-_. ]?(Q\d+_K_(?:M|S|L)|Q\d+_0|F16|F32|Q\d+_K|IQ\d+_[A-Z]+)$",
+            "",
+            stem,
+            flags=re.IGNORECASE,
+        ).strip("-_ ")
+        # Family dictionary (lowercase -> display name).
+        FAMILIES_RAW = (
+            "qwen|llama|gemma|phi|mistral|mixtral|deepseek|"
+            "codellama|starcoder|nemotron|yi|orca|falcon|vicuna|wizardlm|"
+            "openhermes|zephyr|smollm|internlm|baichuan|"
+            "command-r|dbrx|stablelm|solar|llava"
+        )
+        FAMILIES = {
+            "qwen": "Qwen", "llama": "Llama", "gemma": "Gemma",
+            "phi": "Phi", "mistral": "Mistral", "mixtral": "Mixtral",
+            "deepseek": "DeepSeek", "codellama": "CodeLlama",
+            "starcoder": "StarCoder", "nemotron": "Nemotron",
+            "yi": "Yi", "orca": "Orca", "falcon": "Falcon",
+            "vicuna": "Vicuna", "wizardlm": "WizardLM",
+            "openhermes": "OpenHermes", "zephyr": "Zephyr",
+            "smollm": "SmolLM", "internlm": "InternLM",
+            "baichuan": "Baichuan", "command-r": "Command-R",
+            "dbrx": "DBRX", "stablelm": "StableLM",
+            "solar": "Solar", "llava": "LLaVA",
+        }
+        # Compound / dash-separated family names (multi-token lookups).
+        COMPOUND_FAMILIES = {
+            "nous hermes": "Nous Hermes",
+            "gpt oss": "GPT-OSS",
+            "qwen2 vl": "Qwen2-VL",
+            "code llama": "CodeLlama",
+            "open hermes": "OpenHermes",
+            "command r": "Command-R",
+        }
+        SUB_VARIANTS = ("chat", "instruct", "base", "it")
+        # Skip tokens (e.g. "mini", "4k", "v0.3" version tags, "xB" expert
+        # count). These should never be confused with the size token.
+        SKIP_TOKENS = {"mini", "4k", "8k", "32k", "x"}
+
+        def _match_size(t: str) -> tuple[str, int] | None:
+            """Return (size_str, priority) or None.
+
+            Priority is HIGHER for more specific patterns. We always
+            pick the highest-priority match, so an explicit "9b" beats
+            a bare "2" version number, and "8x7b" beats a bare "8".
+            """
+            mm = re.match(r"^(\d+(?:\.\d+)?)([Bb])$", t)
+            if mm:
+                return f"{mm.group(1)}B", 30
+            # Mixtral-style "8x7b" → "8x7B".
+            mm = re.match(r"^(\d+)x(\d+(?:\.\d+)?)([Bb])$", t, re.IGNORECASE)
+            if mm:
+                return f"{mm.group(1)}x{mm.group(2)}B", 20
+            # Bare number (lowest priority — likely a version tag).
+            mm = re.match(r"^(\d+(?:\.\d+)?)$", t)
+            if mm:
+                return mm.group(1), 10
+            return None
+
+        groups = [g for g in re.split(r"[-_]", stem) if g]
+        tokens: list[str] = list(groups)
+
+        # Find family: try compound first (longest match), then single.
+        family_disp = None
+        family_end = -1
+        for n in (2, 1):
+            if len(tokens) < n:
+                continue
+            head = " ".join(t.lower() for t in tokens[:n])
+            if n == 2 and head in COMPOUND_FAMILIES:
+                family_disp = COMPOUND_FAMILIES[head]
+                family_end = n - 1
+                break
+            if n == 1 and head in FAMILIES:
+                family_disp = FAMILIES[head]
+                family_end = 0
+                break
+        if family_disp is None:
+            return " ".join(t.title() for t in tokens) or stem
+
+        # Find size token AFTER the family. Pick the highest-priority
+        # match; skip non-size tokens like "mini", "4k", "v0.3".
+        size_str = ""
+        size_priority = -1
+        size_end = -1
+        # Phi-3 special: "phi-3-mini-4k-instruct" → "Phi 3 Mini Instruct".
+        # The bare "3" is the version (low priority), but we still want
+        # to surface it alongside the variant name.
+        phi_version = ""
+        if family_disp == "Phi":
+            # Find the version number token (first bare number after Phi).
+            for j in range(family_end + 1, len(tokens)):
+                t = tokens[j].lower()
+                if t in SKIP_TOKENS or (t.startswith("v") and re.match(r"^v\d", t)):
+                    continue
+                mm = re.match(r"^(\d+(?:\.\d+)?)$", tokens[j])
+                mtch = _match_size(tokens[j])
+                if mm and mtch:  # bare number
+                    phi_version = mm.group(1)
+                    break
+                if mtch:
+                    break
+        for j in range(family_end + 1, len(tokens)):
+            t = tokens[j].lower()
+            if t in SKIP_TOKENS or (t.startswith("v") and re.match(r"^v\d", t)):
+                continue
+            mtch = _match_size(tokens[j])
+            if mtch and mtch[1] > size_priority:
+                size_str, size_priority = mtch[0], mtch[1]
+                size_end = j
+        # Phi-3 special override: if we found "mini" / "medium" / etc.,
+        # use it as the size string and prepend the version.
+        if family_disp == "Phi" and phi_version:
+            for j in range(family_end + 1, len(tokens)):
+                tlow = tokens[j].lower()
+                if tlow in ("mini", "medium", "small", "vision"):
+                    size_str = f"{phi_version} {tlow.capitalize()}"
+                    size_priority = 35  # beats NB (30)
+                    size_end = j
+                    break
+
+        # Find sub-variant token after the size.
+        sub = ""
+        if size_end != -1:
+            for k in range(size_end + 1, len(tokens)):
+                tlow = tokens[k].lower()
+                if tlow in SUB_VARIANTS:
+                    sub = tlow.capitalize()
+                    break
+        parts = [family_disp]
+        if size_str:
+            parts.append(size_str)
+        if sub:
+            parts.append(sub)
+        return " ".join(parts)
+
     def exists(self) -> bool:
         return bool(self.gguf_path) and os.path.isfile(self.gguf_path)
 

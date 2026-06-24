@@ -229,6 +229,12 @@ def _populate_search_dirs() -> None:
     # 1. The ForgeMind config dir (drop .gguf here!)
     _GGUF_SEARCH_DIRS.append(here / "models")
     _GGUF_SEARCH_DIRS.append(here)
+    # 1b. The ForgeMind bin/ dir (the .exe bundles llama.cpp binaries AND
+    # a tiny starter GGUF here, e.g. qwen2.5-1.5b-instruct-q4_k_m.gguf).
+    # Including this dir in the GGUF search means first_run_setup picks
+    # up the bundled starter model automatically — the UI then shows a
+    # real model card instead of "(sin modelo)" on a fresh install.
+    _GGUF_SEARCH_DIRS.append(here / "bin")
     # 2. Standard "I keep my models here" locations
     for cand in (
         Path("C:/modelos"),
@@ -328,6 +334,23 @@ def find_gguf_all() -> list[str]:
     return sorted(out)
 
 
+def _set_model_name_from_stem(settings: dict[str, Any], gguf: str) -> None:
+    """Last-resort filename heuristic — strips the quant suffix.
+
+    Used only when ModelConfig.pretty_name fails (file missing, parse
+    error, etc.). Kept as a private helper so first_run_setup has a
+    single point that always ends with a usable ``settings['model']['name']``.
+    """
+    name = Path(gguf).stem
+    for q in ("Q4_K_M", "Q4_K_S", "Q4_0", "Q5_K_M", "Q6_K", "Q8_0",
+              "Q3_K_M", "Q2_K", "F16", "F32"):
+        if q.lower() in name.lower():
+            name = name.replace(q, "").replace(q.lower(), "").strip(".-_ ")
+            break
+    if name:
+        settings["model"]["name"] = name
+
+
 # ---------------------------------------------------------------------------
 # First-run setup
 # ---------------------------------------------------------------------------
@@ -374,15 +397,25 @@ def first_run_setup(*, interactive: bool = True) -> dict[str, Any]:
     gguf = find_gguf()
     if gguf:
         settings["model"]["gguf_path"] = gguf
-        # Best-effort: name the model from the filename (without ext / quant)
-        name = Path(gguf).stem
-        for q in ("Q4_K_M", "Q4_K_S", "Q4_0", "Q5_K_M", "Q6_K", "Q8_0",
-                  "Q3_K_M", "Q2_K", "F16", "F32"):
-            if q.lower() in name.lower():
-                name = name.replace(q, "").replace(q.lower(), "").strip("._- ")
-                break
-        if name:
-            settings["model"]["name"] = name
+        # Use ModelConfig.pretty_name (property) to turn
+        # "qwen2.5-1.5b-instruct-q4_k_m.gguf" into "Qwen2.5 1.5B Instruct"
+        # so the sidebar + composer pills show a human-readable name on
+        # first run (otherwise they display the raw slug).
+        try:
+            from .model_config import ModelConfig
+            cfg_tmp = ModelConfig(gguf_path=gguf)
+            if cfg_tmp.exists():
+                pretty = cfg_tmp.pretty_name
+                if pretty:
+                    settings["model"]["name"] = pretty
+                # Also persist quant + size so the model card can show
+                # them without re-reading the GGUF header.
+                settings["model"]["quant"] = cfg_tmp.quant or ""
+                settings["model"]["size_human"] = cfg_tmp.size_human or ""
+            else:
+                _set_model_name_from_stem(settings, gguf)
+        except Exception:
+            _set_model_name_from_stem(settings, gguf)
 
     # 4. Auto-arrancar el backend al abrir si tenemos modelo + cli.
     #    Si no encontramos nada, dejamos False para no estorbar al usuario

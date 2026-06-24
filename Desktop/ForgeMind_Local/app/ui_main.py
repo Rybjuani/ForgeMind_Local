@@ -2162,6 +2162,15 @@ class ChatScreen(QWidget):
         comp_lay.setContentsMargins(14, 14, 14, 10)
         comp_lay.setSpacing(6)
         self._composer_frame = comp
+        # Drop shadow under the floating composer (mockup v14 L920-960).
+        # CSS box-shadow is ignored by Qt; approximate with
+        # QGraphicsDropShadowEffect so the card visually floats above
+        # the messages area.
+        comp_shadow = QGraphicsDropShadowEffect(comp)
+        comp_shadow.setBlurRadius(32)
+        comp_shadow.setOffset(0, 6)
+        comp_shadow.setColor(QColor(0, 0, 0, 120))
+        comp.setGraphicsEffect(comp_shadow)
 
         # --- composer-input-shell (mockup v14 L880-895) ---
         # A dedicated inner QFrame around the textarea so the focus
