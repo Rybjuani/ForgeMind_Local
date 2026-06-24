@@ -1857,7 +1857,14 @@ def _card(title: str, icon: str, desc: str = "") -> tuple[QFrame, QVBoxLayout]:
 
 def _icon_button(label: str, svg_name: str, *, primary: bool = False,
                  ghost: bool = False, danger: bool = False) -> QPushButton:
-    """Button with an SVG icon + label (replaces emoji-prefixed text)."""
+    """Button with an SVG icon + label (replaces emoji-prefixed text).
+
+    The QPushButton default sizeHint collapses to the icon width when
+    the button's own ``text`` property is empty (we use QLabel children
+    instead of setText). That makes the button visually too narrow on
+    screens wider than ~960px — the label disappears past the icon.
+    We force a sensible minimum width so the label always fits.
+    """
     btn = QPushButton()
     if primary:
         btn.setProperty("primary", True)
@@ -1865,6 +1872,9 @@ def _icon_button(label: str, svg_name: str, *, primary: bool = False,
         btn.setProperty("ghost", True)
     if danger:
         btn.setProperty("danger", True)
+    # min-width so icon + label always fit. 160px covers "Aplicar config al
+    # backend" / "Iniciar modelo" / "Detener" comfortably at 13px font.
+    btn.setMinimumWidth(160)
     lay = QHBoxLayout(btn)
     lay.setContentsMargins(14, 0, 14, 0)
     lay.setSpacing(8)
@@ -2120,9 +2130,9 @@ class ChatScreen(QWidget):
         shell_lay.setSpacing(0)
         self.edit = QPlainTextEdit(shell)
         self.edit.setObjectName("ComposerEdit")
-        self.edit.setPlaceholderText("¿En qué querés resolver con el modelo local?")
-        # Auto-grow: min 56, max 200 — set via _on_text_changed
-        self.edit.setFixedHeight(56)
+        self.edit.setPlaceholderText("Preguntale algo a tu modelo local…")
+        # Auto-grow: min 48, max 200 — set via _on_text_changed
+        self.edit.setFixedHeight(48)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         shell_lay.addWidget(self.edit)
@@ -2530,6 +2540,13 @@ class ConfigScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.backend_ref: Any = None  # injected from MainWindow
+        # QStackedWidget pages do NOT inherit QApplication-set QSS for
+        # type-only selectors (QLineEdit, QSpinBox, QComboBox, ...) on
+        # Windows / offscreen Qt. Re-apply the global QSS on this page
+        # so inputs / combos / spinboxes actually receive their dark
+        # theme. The QSS string is a constant defined at module top
+        # (`QSS`) so we just reference it.
+        self.setStyleSheet(QSS)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 28, 28, 48)
@@ -2541,6 +2558,12 @@ class ConfigScreen(QWidget):
         form1 = QGridLayout()
         form1.setHorizontalSpacing(16)
         form1.setVerticalSpacing(12)
+        # Make the input column (col 1) take ALL the remaining width so
+        # the inputs don't collapse to their natural width when the
+        # screen is wide. Without this, on 1440px the inputs render at
+        # ~40px wide and the labels stay huge.
+        form1.setColumnStretch(0, 0)
+        form1.setColumnStretch(1, 1)
 
         form1.addWidget(_make_field_label("Archivo .gguf"), 0, 0, 1, 2)
         gguf_row = QHBoxLayout()
@@ -2637,6 +2660,8 @@ class ConfigScreen(QWidget):
         form2 = QGridLayout()
         form2.setHorizontalSpacing(16)
         form2.setVerticalSpacing(12)
+        form2.setColumnStretch(0, 0)
+        form2.setColumnStretch(1, 1)
         form2.addWidget(_make_field_label("Tipo de backend"), 0, 0, 1, 2)
         self.cmb_backend_kind = QComboBox()
         # Mockup L2033-2038: descriptive labels (keep the bare key as item data
@@ -2846,6 +2871,9 @@ def _make_field_label(text: str) -> QLabel:
 class MetricsScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # Re-apply QSS — see ConfigScreen.__init__ for the rationale
+        # (QStackedWidget pages do not inherit type-only QSS rules).
+        self.setStyleSheet(QSS)
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 28, 28, 48)
         root.setSpacing(16)
@@ -2923,6 +2951,8 @@ class MetricsScreen(QWidget):
 class BenchmarkScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # Re-apply QSS — see ConfigScreen.__init__ for the rationale.
+        self.setStyleSheet(QSS)
         self._selected_paths: set[str] = set()
         self._last_compare: dict[str, Any] = {}
 
@@ -3220,6 +3250,8 @@ class PresetsScreen(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # Re-apply QSS — see ConfigScreen.__init__ for the rationale.
+        self.setStyleSheet(QSS)
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 28, 28, 48)
         root.setSpacing(16)
@@ -3283,6 +3315,8 @@ class PresetsScreen(QWidget):
 class GPUScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # Re-apply QSS — see ConfigScreen.__init__ for the rationale.
+        self.setStyleSheet(QSS)
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 28, 28, 48)
         root.setSpacing(16)
@@ -3612,6 +3646,7 @@ class MainWindow(QMainWindow):
         self.refresh_gpu()
         self.refresh_status_chips()
         self.refresh_bench_runs()
+        self.refresh_sidebar_history()
         # Hide the native QStatusBar — the mockup uses only toasts + the sidebar
         # footer for status feedback (no bottom status bar).
         self.statusBar().setVisible(False)
@@ -3745,8 +3780,12 @@ class MainWindow(QMainWindow):
         cs.send_btn.clicked.connect(self._on_send_chat)
         cs.clear_btn.clicked.connect(self._on_clear_chat)
         cs.preset_pill.clicked.connect(self._on_cycle_preset)
+        # Model pill → jump to Modelo y backend (mockup v14 L932).
+        if hasattr(cs, "model_pill"):
+            cs.model_pill.clicked.connect(lambda: self._switch_screen("config"))
         cs.edit.textChanged.connect(self._on_composer_text_changed)
-        # enter to send
+        # The eventFilter on cs.edit (installed below) also handles the
+        # composer-shell focus border — see MainWindow.eventFilter().
         cs.edit.installEventFilter(self)
 
     def _wire_config(self) -> None:
@@ -3793,10 +3832,28 @@ class MainWindow(QMainWindow):
 
     # ---------- keyboard shortcuts ----------
     def eventFilter(self, obj, ev) -> bool:  # noqa: N802
-        if obj is self.chat_screen.edit and ev.type() == ev.Type.KeyPress:
-            if ev.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (ev.modifiers() & Qt.KeyboardModifier.ShiftModifier):
-                self._on_send_chat()
-                return True
+        if obj is self.chat_screen.edit:
+            t = ev.type()
+            # Enter to send (without Shift)
+            if t == ev.Type.KeyPress:
+                if ev.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (ev.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+                    self._on_send_chat()
+                    return True
+            # Focus border on the shell (mockup v14 L880-895)
+            shell = getattr(self.chat_screen, "_composer_shell", None)
+            if shell is not None:
+                if t == ev.Type.FocusIn:
+                    shell.setStyleSheet(
+                        "QFrame#ComposerInputShell { background: transparent; "
+                        "border: 1px solid rgba(217,119,87,0.42); "
+                        "border-radius: 10px; margin: 0 2px 8px; }"
+                    )
+                elif t == ev.Type.FocusOut:
+                    shell.setStyleSheet(
+                        "QFrame#ComposerInputShell { background: transparent; "
+                        "border: 1px solid rgba(255,255,255,0.10); "
+                        "border-radius: 10px; margin: 0 2px 8px; }"
+                    )
         return super().eventFilter(obj, ev)
 
     def keyPressEvent(self, e) -> None:  # noqa: N802
@@ -4609,13 +4666,60 @@ class MainWindow(QMainWindow):
     # ---------- sidebar / chips ----------
     def refresh_sidebar_model_card(self) -> None:
         cfg = self.backend.config
+        # Map model name into something short for the pill / composer.
+        display_name = cfg.name or "(sin modelo)"
+        if cfg.name == "modelo-sin-nombre":
+            display_name = "(sin modelo)"
+        # Truncate long names (e.g. "Llama-3.1-Nemotron-70B-Instruct-Q4_K_M.gguf").
+        if len(display_name) > 28:
+            display_name = display_name[:25].rstrip(" .-_") + "…"
+        try:
+            running = bool(self.backend.is_running())
+        except Exception:
+            running = False
         self.sidebar.set_model_card(
-            name=cfg.name or "",
+            name=display_name,
             quant=cfg.quant or "",
             size_human=cfg.size_human or "",
             ctx_size=cfg.ctx_size,
-            running=self.backend.is_running(),
+            running=running,
         )
+        # Composer model-pill label mirrors the sidebar model card.
+        try:
+            if hasattr(self.chat_screen, "model_pill_label"):
+                self.chat_screen.model_pill_label.setText(display_name)
+        except Exception:
+            pass
+
+    def refresh_sidebar_history(self) -> None:
+        """Reload the sidebar history rail from results_dir.
+
+        We swallow any IO error silently — the history rail is a UX
+        nicety and must never crash the app at startup.
+        """
+        try:
+            from pathlib import Path
+            from . import history
+            results_dir = (
+                self._settings.get("ui", {}).get("results_dir")
+                or "benchmarks/results"
+            )
+            p = Path(results_dir)
+            if not p.is_absolute():
+                p = Path(__file__).resolve().parent.parent / results_dir
+            raw_runs = history.list_runs(str(p))
+            runs = [
+                {
+                    "label": r.get("label") or "—",
+                    "quant": r.get("quant") or "",
+                    "size_human": r.get("size_human") or "",
+                    "ts": r.get("timestamp") or "",
+                }
+                for r in raw_runs
+            ]
+            self.sidebar.set_history(runs)
+        except Exception:
+            self.sidebar.set_history([])
 
     def refresh_status_chips(self) -> None:
         cfg = self.backend.config
