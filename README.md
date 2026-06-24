@@ -17,6 +17,17 @@ App desktop para comparar modelos GGUF locales en Windows 10. Sin cloud, sin cla
 - GPU: AMD Radeon RX550 4 GB (sin NVIDIA, sin CUDA).
 - Vulkan como modo experimental (no se afirma que mejore sin benchmark).
 
+## Quick start (Windows — sin linea de comandos)
+
+Doble click en **`INICIAR.bat`** en la carpeta del proyecto. La primera vez:
+1. Detecta o crea un venv con Python + PyQt6 + psutil + PyInstaller.
+2. Empaqueta `dist\ForgeMind.exe` (1-3 minutos).
+3. Abre la app automaticamente.
+
+Las siguientes veces abre directo en 1 segundo (reusa el `.exe`).
+
+Para tener un icono en el escritorio: doble click en **`Crear acceso.bat`**.
+
 ## Quick start (PowerShell nativo)
 
 ```powershell
@@ -67,18 +78,38 @@ En la misma pestana `Benchmark`, seccion inferior "Historial y comparacion":
 
 Util para responder la pregunta clave: "cual modelo conviene para mi PC?" sin tener que correr los benchmarks lado a lado a ojo.
 
+## Conversaciones de chat (persistencia)
+
+La pestana `Chat` guarda automaticamente cada conversacion en `chats/<id>.json` (al lado de `settings.json`). Cada archivo incluye:
+- `id`: timestamp `YYYYMMDD-HHMMSS`
+- `title`: derivado del primer mensaje del usuario (primeros 40 chars)
+- `created_at` / `updated_at`
+- `model`: nombre del modelo activo al momento del chat
+- `preset`: preset activo (diario, coding, etc.)
+- `messages`: lista de `{role, content, ts, preset}` (user + ai)
+
+El sidebar `HISTORIAL` muestra las 8 conversaciones mas recientes. Click en una entrada la carga completa en el chat screen (incluyendo respuestas del AI).
+
+Boton `Nueva conversacion` (sidebar o header) empieza un chat nuevo sin perder los anteriores. Boton `Limpiar` (trash en el composer) limpia la vista pero el archivo sigue en disco.
+
+Para borrar conversaciones: eliminar manualmente los `.json` en `chats/` (son archivos de texto plano, editables con cualquier editor).
+
 ## Estructura
 
 ```
 ForgeMind_Local/
-  app/                # codigo Python (main, UI, backend, metrics, gpu_detect, benchmark, presets)
+  app/                # codigo Python (main, UI, backend, metrics, gpu_detect, benchmark, presets, chat_history)
   configs/            # ejemplos .example.json (NO commitear configs reales)
   benchmarks/         # prompts_es.json + results/
+  chats/              # conversaciones persistidas (auto-generado, NO commitear)
   scripts/            # run.ps1, check_env.ps1, build.ps1
   docs/               # notas (modelos, backends, vulkan, uso diario, build)
-  tests/              # pytest, 92 tests
+  tests/              # pytest, 172 tests
   run.py              # entry shim para PyInstaller
   forgemind.spec      # spec de PyInstaller
+  INICIAR.bat         # doble click para abrir la app (buildea si hace falta)
+  Crear acceso.bat    # crea icono en el escritorio
+  build.bat           # genera dist\ForgeMind.exe
 ```
 
 ## Tests

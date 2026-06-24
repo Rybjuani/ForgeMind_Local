@@ -53,6 +53,10 @@ configs/settings.json
 # Contiene paths absolutos a la maquina del developer; NUNCA commitear.
 settings.json
 
+# Conversaciones de chat persistidas por app/chat_history.py
+# (datos del usuario, se regeneran al chatear; NUNCA commitear).
+chats/
+
 # Binarios de llama.cpp descargados por app/downloader.py
 # (se regeneran via el wizard o `python -m app.downloader cpu`).
 bin/

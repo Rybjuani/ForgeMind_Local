@@ -19,6 +19,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -1755,11 +1756,16 @@ class Sidebar(QFrame):
     def set_history(self, runs: list[dict[str, Any]]) -> None:
         """Rebuild the history rail from a list of run dicts.
 
-        Each entry has ``{"label", "quant", "size_human", "ts"}``; the
-        list is expected to be ordered most-recent first and capped to
-        ~5 items by the caller. The HISTORIAL heading is ALWAYS visible
-        (matches the v14 mockup, which shows the heading even when the
-        rail is empty); only the items list collapses when empty.
+        Each entry has ``{"label", "quant", "size_human", "ts",
+        "chat_id" (optional)}``; the list is expected to be ordered
+        most-recent first and capped to ~5 items by the caller. The
+        HISTORIAL heading is ALWAYS visible (matches the v14 mockup,
+        which shows the heading even when the rail is empty); only
+        the items list collapses when empty.
+
+        If ``chat_id`` is present on an entry, clicking it emits
+        ``self.history_clicked`` with that ID so MainWindow can load
+        the full conversation.
         """
         # Clear existing entries
         for entry in self._history_entries:
@@ -1769,13 +1775,21 @@ class Sidebar(QFrame):
         # The section itself is always shown (mockup v14 L1300-1330
         # keeps the HISTORIAL heading even with zero items).
         self.history_section.show()
-        for r in runs[:5]:
-            row = QFrame(self.history_section)
+        for r in runs[:8]:
+            row = QPushButton(self.history_section)
             row.setObjectName("HistoryItem")
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.setFlat(True)
             row.setStyleSheet(
-                "QFrame#HistoryItem { background: transparent; border: 0; }"
-                "QFrame#HistoryItem:hover { background: rgba(255,255,255,0.045); }"
+                "QPushButton#HistoryItem { background: transparent; border: 0; "
+                "text-align: left; padding: 4px 10px; }"
+                "QPushButton#HistoryItem:hover { background: rgba(255,255,255,0.045); }"
             )
+            chat_id = r.get("chat_id") or ""
+            row.setProperty("chat_id", chat_id)
+            # Click → emit signal (MainWindow connects to _on_open_chat)
+            if chat_id:
+                row.clicked.connect(lambda _=False, cid=chat_id: self._on_history_click(cid))
             rlay = QHBoxLayout(row)
             rlay.setContentsMargins(10, 0, 10, 0)
             rlay.setSpacing(9)
@@ -1801,6 +1815,12 @@ class Sidebar(QFrame):
             rlay.addWidget(lbl, 1)
             self._history_entries.append(row)
             self.history_list_layout.addWidget(row)
+
+    def _on_history_click(self, chat_id: str) -> None:
+        """Forward a history-item click to the parent MainWindow."""
+        win = self.window()
+        if win is not None and hasattr(win, "_on_open_chat"):
+            win._on_open_chat(chat_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2549,6 +2569,33 @@ class ChatScreen(QWidget):
             if first is not None and tps is not None else
             f"{chars} chars"
         )
+
+    def _set_last_ai_text(self, text: str) -> None:
+        """Overwrite the body of the last AI message bubble.
+
+        Used when replaying a persisted conversation: we call
+        ``add_streaming_ai_message`` + ``finalize_stream`` to create
+        the bubble skeleton, then this method to populate it with
+        the stored response text (bypassing the streaming path).
+        """
+        if not self._messages_dom or self._messages_dom[-1].get("role") != "ai":
+            return
+        meta = self._messages_dom[-1]
+        meta["body"] = text
+        body_lbl: QLabel = meta["body_label"]
+        bubble = meta.get("bubble")
+        # Hide the typing indicator if it's still showing
+        if bubble is not None and getattr(bubble, "_typing", None) is not None:
+            typing = bubble._typing
+            if hasattr(typing, "_dot_timer"):
+                typing._dot_timer.stop()
+            typing.hide()
+            typing.deleteLater()
+            bubble._typing = None
+            body_lbl.show()
+        body_lbl.setText(text)
+        QApplication.processEvents()
+        self._scroll_to_bottom()
 
     def append_error(self, msg: str) -> None:
         self._add_message("ai", self._preset_label(self._current_preset_key),
@@ -3806,6 +3853,11 @@ class MainWindow(QMainWindow):
         # Backend (LlamaBackend with the hydrated ModelConfig)
         self.backend = self._make_backend(initial_model_cfg)
         self._chat_history: list[dict[str, str]] = []
+        # Persisted chat session state. ``_current_chat_id`` is None
+        # when no conversation is loaded yet (fresh chat screen). It
+        # gets assigned on the first user message and stays bound
+        # until the user clicks "Nueva conversacion" or "Limpiar".
+        self._current_chat_id: str | None = None
         self._current_runner: GenerateRunner | None = None
         self._last_metrics: dict[str, Any] = {}
         self._sidebar_collapsed = False
@@ -4377,9 +4429,43 @@ class MainWindow(QMainWindow):
                 return
         preset = get_preset(self.chat_screen.current_preset()) or default_preset()
         self.chat_screen.add_user_message(prompt_text)
-        self._chat_history.append({"role": "user", "content": prompt_text})
+        ts = datetime.now().isoformat(timespec="seconds")
+        self._chat_history.append({"role": "user", "content": prompt_text, "ts": ts})
+        # Persist the chat: assign an ID if this is the first message,
+        # then save so the sidebar HISTORIAL rail updates immediately.
+        self._persist_current_chat(prompt_text)
         self.chat_screen.clear_input()
         self._run_chat_stream(prompt_text, preset.system, preset.max_tokens)
+
+    def _persist_current_chat(self, first_user_text: str | None = None) -> None:
+        """Persist the in-memory conversation to chats/<id>.json.
+
+        On the first message ``first_user_text`` is provided so we
+        can derive a title; subsequent saves skip the title
+        derivation (it stays as the first message's preview).
+
+        Failures are swallowed silently — chat persistence is a UX
+        nicety and must never crash the app.
+        """
+        try:
+            from . import chat_history
+            from datetime import datetime
+            if self._current_chat_id is None:
+                self._current_chat_id = chat_history.new_chat_id()
+            cfg = self.backend.config
+            conv = {
+                "id": self._current_chat_id,
+                "title": (chat_history.derive_title(first_user_text)
+                          if first_user_text else None),
+                "model": cfg.name if cfg.name != "modelo-sin-nombre" else "",
+                "preset": self.chat_screen.current_preset(),
+                "messages": self._chat_history,
+            }
+            chat_history.save_chat(conv)
+            self.refresh_sidebar_history()
+        except Exception:
+            # Best-effort: never block the user's send.
+            pass
 
     def _run_chat_stream(self, prompt: str, system: str, max_tokens: int) -> None:
         self.chat_screen.send_btn.setEnabled(False)
@@ -4397,7 +4483,13 @@ class MainWindow(QMainWindow):
         self.chat_screen.finalize_stream(metrics)
         self.chat_screen.send_btn.setEnabled(True)
         self._last_metrics = metrics
-        self._chat_history.append({"role": "ai", "content": out})
+        ts = datetime.now().isoformat(timespec="seconds")
+        preset_key = self.chat_screen.current_preset()
+        self._chat_history.append({
+            "role": "ai", "content": out, "ts": ts, "preset": preset_key,
+        })
+        # Persist the AI response too so the conversation log is complete.
+        self._persist_current_chat()
         self._current_runner = None
         self.refresh_metrics()
         self.refresh_sidebar_model_card()
@@ -4409,15 +4501,72 @@ class MainWindow(QMainWindow):
         self._current_runner = None
 
     def _on_clear_chat(self) -> None:
+        """Limpiar la conversacion actual (no borra el archivo guardado).
+
+        El chat sigue existiendo en disco; el usuario puede volver a
+        abrirlo desde el sidebar HISTORIAL. Solo se limpia la vista.
+        """
         self.chat_screen.clear_messages()
         self._chat_history.clear()
+        self._current_chat_id = None
         self._show_toast("Conversación limpiada")
 
     def _on_new_chat(self) -> None:
+        """Empezar una conversacion nueva desde cero.
+
+        Limpia la vista + el estado en memoria + desvincula el ID
+        actual. El proximo mensaje del usuario crea un nuevo JSON
+        en ``chats/``.
+        """
         self.chat_screen.clear_messages()
         self._chat_history.clear()
+        self._current_chat_id = None
         self._switch_screen("chat")
         self._show_toast("Nueva conversación")
+
+    def _on_open_chat(self, chat_id: str) -> None:
+        """Cargar una conversacion existente desde disco.
+
+        Restaura los mensajes en el chat screen, setea el preset
+        activo, y marca el chat como el actual para que los proximos
+        mensajes se agreguen al mismo archivo.
+        """
+        try:
+            from . import chat_history
+            conv = chat_history.load_chat(chat_id)
+            if conv is None:
+                self._show_toast("No se pudo cargar la conversación")
+                return
+            self._current_chat_id = conv.get("id", chat_id)
+            msgs = conv.get("messages") or []
+            self._chat_history = list(msgs)
+            # Replay messages into the chat screen
+            self.chat_screen.clear_messages()
+            preset_key = conv.get("preset", "diario")
+            for m in msgs:
+                if m.get("role") == "user":
+                    self.chat_screen.add_user_message(m.get("content", ""))
+                elif m.get("role") == "ai":
+                    self.chat_screen.add_streaming_ai_message(m.get("preset", preset_key))
+                    self.chat_screen.finalize_stream({
+                        "tokens_per_sec_proxy": None,
+                        "first_token_sec": None,
+                        "elapsed_sec": None,
+                        "char_count": len(m.get("content", "")),
+                    })
+                    # Overwrite the streaming placeholder with the
+                    # actual stored content. finalize_stream left a
+                    # pending message that we need to populate.
+                    self.chat_screen._set_last_ai_text(m.get("content", ""))
+            # Restore preset
+            try:
+                self.chat_screen.set_preset(preset_key)
+            except Exception:
+                pass
+            self._switch_screen("chat")
+            self._show_toast(f"Conversación cargada: {conv.get('title', '')[:40]}")
+        except Exception as e:
+            self._show_toast(f"Error: {e}")
 
     def _on_cycle_preset(self) -> None:
         self.chat_screen.cycle_preset()
@@ -5121,21 +5270,35 @@ class MainWindow(QMainWindow):
             pass
 
     def refresh_sidebar_history(self) -> None:
-        """Reload the sidebar history rail.
+        """Reload the sidebar history rail from chats/.
 
-        The v14 mockup shows the sidebar HISTORIAL section as EMPTY
-        (just the heading, no items) — it represents CHAT
-        conversations, not benchmark runs. Since the app doesn't
-        persist chat conversations across sessions, the rail stays
-        empty for now. The heading itself remains visible (per
-        mockup) so the user knows the section exists.
+        Lists the most recent persisted chat conversations as plain
+        text entries. Each entry is clickable to load the full
+        conversation back into the chat screen (see ``_on_open_chat``).
 
-        Benchmark history lives on the Benchmark screen instead,
-        populated by ``BenchmarkScreen._reload_runs()``.
+        The HISTORIAL heading is ALWAYS visible (matches the v14
+        mockup, which shows the heading even when the rail is empty);
+        only the items list collapses when there are no chats.
+
+        Benchmark history is separate and lives on the Benchmark
+        screen (populated by ``BenchmarkScreen._reload_runs``).
         """
-        # Intentionally empty: no chat history persistence yet.
-        # The section heading stays visible (see Sidebar.set_history).
-        self.sidebar.set_history([])
+        try:
+            from . import chat_history
+            raw = chat_history.list_chats(limit=8)
+            runs = [
+                {
+                    "label": r.get("title") or "(sin titulo)",
+                    "quant": "",
+                    "size_human": "",
+                    "ts": r.get("updated_at", ""),
+                    "chat_id": r.get("id", ""),
+                }
+                for r in raw
+            ]
+            self.sidebar.set_history(runs)
+        except Exception:
+            self.sidebar.set_history([])
 
     def refresh_status_chips(self) -> None:
         cfg = self.backend.config
