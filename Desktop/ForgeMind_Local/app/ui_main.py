@@ -1024,17 +1024,28 @@ class TitleBar(QFrame):
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(8)
 
-        # --- LEFT: brand (mark + name) — matches the mockup where the
-        # brand sits on the LEFT of the titlebar and the win controls
-        # are on the RIGHT.
+        # --- LEFT: brand (asterisk mark + name) — Claude desktop v14
+        # replaces the orange "F" mark with a simple "*" serif glyph in
+        # accent orange. CSS text-shadow isn't supported by Qt QSS, so
+        # we approximate the glow with a QGraphicsDropShadowEffect.
+        brand_mark = QLabel("*", self)
+        brand_mark.setObjectName("TitlebarMark")
+        brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_mark.setFixedSize(22, 22)
+        brand_mark.setStyleSheet(
+            "color: #d97757; font-family: 'Newsreader', Georgia, 'Liberation Serif', "
+            "'DejaVu Serif', 'Times New Roman', serif; font-size: 26px; font-weight: 400; "
+            "background: transparent; border: 0; line-height: 1;"
+        )
+        glow = QGraphicsDropShadowEffect(self)
+        glow.setBlurRadius(10)
+        glow.setOffset(0, 0)
+        glow.setColor(QColor(217, 119, 87, 120))
+        brand_mark.setGraphicsEffect(glow)
         brand = QLabel("ForgeMind Local", self)
         brand.setObjectName("BrandLabel")
-        brand_mark = svg_label(self, "ai", color="#1f1e1d", size=18)
-        brand_mark.setStyleSheet(
-            "background: #d97757; border-radius: 5px; padding: 1px;"
-        )
         brand_row = QHBoxLayout()
-        brand_row.setSpacing(8)
+        brand_row.setSpacing(6)
         brand_row.addWidget(brand_mark)
         brand_row.addWidget(brand)
         layout.addLayout(brand_row)
@@ -1331,23 +1342,23 @@ class Sidebar(QFrame):
         top.setSpacing(10)
         brand_box = QHBoxLayout()
         brand_box.setSpacing(10)
-        # Brand mark — Claude desktop style: terracotta gradient + inset highlight
-        # Gradient is intentionally visible (#e08868 -> #b85530) to give the
-        # mark depth, like the Claude desktop brand mark.
-        mark = QFrame(self)
-        mark.setFixedSize(28, 28)
+        # Brand mark — Claude desktop v14: simple "*" glyph in serif
+        # Newsreader, accent orange. The QGraphicsDropShadowEffect
+        # approximates the CSS text-shadow glow.
+        mark = QLabel("*", self)
+        mark.setObjectName("SidebarBrandMark")
+        mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        mark.setFixedSize(32, 32)
         mark.setStyleSheet(
-            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-            "stop:0 #e08868, stop:0.5 #d97757, stop:1 #b85530); "
-            "border-radius: 8px; "
-            "border-top: 1px solid rgba(255,255,255,0.25);"
+            "color: #d97757; font-family: 'Newsreader', Georgia, 'Liberation Serif', "
+            "'DejaVu Serif', 'Times New Roman', serif; font-size: 38px; font-weight: 400; "
+            "background: transparent; border: 0; line-height: 1;"
         )
-        mark_lay = QVBoxLayout(mark)
-        mark_lay.setContentsMargins(0, 0, 0, 0)
-        mark_lbl = svg_label(mark, "ai", color="#1f1e1d", size=15)
-        mark_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mark_lbl.setStyleSheet("background: transparent;")
-        mark_lay.addWidget(mark_lbl)
+        mark_glow = QGraphicsDropShadowEffect(self)
+        mark_glow.setBlurRadius(14)
+        mark_glow.setOffset(0, 0)
+        mark_glow.setColor(QColor(217, 119, 87, 110))
+        mark.setGraphicsEffect(mark_glow)
         brand_box.addWidget(mark)
         bcol = QVBoxLayout()
         bcol.setContentsMargins(0, 0, 0, 0)
@@ -1461,6 +1472,31 @@ class Sidebar(QFrame):
             self.nav_layout.addWidget(btn)
             self.nav_buttons[key] = btn
         body.addLayout(self.nav_layout)
+
+        # --- History rail (mockup v14 L1300-1330) ---
+        # Lists the most recent benchmark runs as plain text entries. We
+        # query app.history.list_runs() on each refresh; entries are
+        # mocked empty in --mock mode and after a fresh install.
+        self.history_section = QFrame(self)
+        self.history_section.setObjectName("HistorySection")
+        self.history_section.setStyleSheet("background: transparent; border: 0;")
+        hs_lay = QVBoxLayout(self.history_section)
+        hs_lay.setContentsMargins(0, 14, 0, 0)
+        hs_lay.setSpacing(4)
+        hs_heading = QLabel("HISTORIAL", self.history_section)
+        hs_heading.setStyleSheet(
+            "color: #787469; font-size: 10.5px; font-weight: 650; "
+            "letter-spacing: 0.075em; background: transparent; "
+            "border: 0; padding: 0 10px 4px;"
+        )
+        hs_lay.addWidget(hs_heading)
+        self.history_list_layout = QVBoxLayout()
+        self.history_list_layout.setSpacing(2)
+        self.history_list_layout.setContentsMargins(0, 0, 0, 0)
+        hs_lay.addLayout(self.history_list_layout)
+        body.addWidget(self.history_section)
+        self._history_entries: list[QFrame] = []
+
         body.addStretch(1)
         root.addLayout(body, 1)
 
@@ -1617,6 +1653,55 @@ class Sidebar(QFrame):
         ram_s = f"{ram_gb:.2f}" if ram_gb is not None else "—"
         tps_s = f"{tps:.1f}" if tps is not None else "—"
         self.foot_text.setText(f"RAM {ram_s} / 16 GB · {tps_s} t/s")
+
+    def set_history(self, runs: list[dict[str, Any]]) -> None:
+        """Rebuild the history rail from a list of run dicts.
+
+        Each entry has ``{"label", "quant", "size_human", "ts"}``; the
+        list is expected to be ordered most-recent first and capped to
+        ~5 items by the caller. Empty list hides the section entirely.
+        """
+        # Clear existing entries
+        for entry in self._history_entries:
+            entry.setParent(None)
+            entry.deleteLater()
+        self._history_entries = []
+        if not runs:
+            self.history_section.hide()
+            return
+        self.history_section.show()
+        for r in runs[:5]:
+            row = QFrame(self.history_section)
+            row.setObjectName("HistoryItem")
+            row.setStyleSheet(
+                "QFrame#HistoryItem { background: transparent; border: 0; }"
+                "QFrame#HistoryItem:hover { background: rgba(255,255,255,0.045); }"
+            )
+            rlay = QHBoxLayout(row)
+            rlay.setContentsMargins(10, 0, 10, 0)
+            rlay.setSpacing(9)
+            dot = QFrame(row)
+            dot.setFixedSize(5, 5)
+            dot.setStyleSheet(
+                "background: #787469; border-radius: 3px; border: 0;"
+            )
+            rlay.addWidget(dot)
+            lbl = QLabel(str(r.get("label") or "—"), row)
+            lbl.setStyleSheet(
+                "color: #a8a499; font-size: 12.5px; background: transparent; "
+                "border: 0;"
+            )
+            lbl.setToolTip(
+                f"{r.get('label','')} · {r.get('quant','')} · "
+                f"{r.get('size_human','')} · {r.get('ts','')}"
+            )
+            # elide long labels
+            fm = lbl.fontMetrics()
+            elided = fm.elidedText(lbl.text(), Qt.TextElideMode.ElideRight, 170)
+            lbl.setText(elided)
+            rlay.addWidget(lbl, 1)
+            self._history_entries.append(row)
+            self.history_list_layout.addWidget(row)
 
 
 # ---------------------------------------------------------------------------
@@ -1844,77 +1929,151 @@ class ChatScreen(QWidget):
         self.scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root.addWidget(self.scroll, 1)
 
-        # --- Empty state (Claude desktop style) ---
-        # When there are no messages, show a centered hero title + 4
-        # suggestion cards in a 2x2 grid. Hidden once the first message
-        # is sent.
+        # --- Empty state (Claude desktop v14: asterisk logo + greeting
+        # + subtitle + 4 suggestion cards in ONE row). Hidden once the
+        # first message is sent.
         self.empty_state = QFrame(self)
         self.empty_state.setObjectName("ChatEmpty")
         self.empty_state.setStyleSheet("background: transparent; border: 0;")
         empty_outer = QHBoxLayout()
         empty_outer.addStretch(1)
         empty_inner = QVBoxLayout(self.empty_state)
-        empty_inner.setContentsMargins(0, 80, 0, 24)
-        empty_inner.setSpacing(28)
+        empty_inner.setContentsMargins(0, 60, 0, 16)
+        empty_inner.setSpacing(14)
         empty_inner.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        # Hero title (Claude desktop: "What's on your mind?")
-        hero = QLabel("¿En qué puedo ayudarte hoy?", self.empty_state)
+
+        # --- Asterisk logo (mockup v14 L1043-1078) ---
+        # The brand mark is a single "*" glyph in serif Newsreader with
+        # a soft orange glow. CSS text-shadow is unsupported by Qt, so we
+        # approximate with a QGraphicsDropShadowEffect.
+        logo = QLabel("*", self.empty_state)
+        logo.setObjectName("ChatEmptyLogo")
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo.setStyleSheet(
+            "color: #d97757; font-family: 'Newsreader', Georgia, "
+            "'Liberation Serif', 'DejaVu Serif', 'Times New Roman', serif; "
+            "font-size: 64px; font-weight: 400; line-height: 1; "
+            "background: transparent; border: 0;"
+        )
+        glow = QGraphicsDropShadowEffect(self.empty_state)
+        glow.setBlurRadius(28)
+        glow.setOffset(0, 0)
+        glow.setColor(QColor(217, 119, 87, 80))
+        logo.setGraphicsEffect(glow)
+        empty_inner.addWidget(logo)
+
+        # --- Greeting title (mockup L1080-1100) ---
+        # Use a friendly Spanish greeting with a "name" placeholder that
+        # falls back to "ahí" when the user hasn't customized it yet.
+        try:
+            from . import auto_config
+            user_name = (auto_config.load_settings().get("ui", {}) or {}).get(
+                "user_name", "ahí"
+            ) or "ahí"
+        except Exception:
+            user_name = "ahí"
+        hero = QLabel(f"Hola, {user_name}", self.empty_state)
         hero.setObjectName("ChatEmptyTitle")
         hero.setStyleSheet(
-            "color: #f5f4ee; font-size: 28px; font-weight: 400; "
+            "color: #f5f4ee; font-size: 30px; font-weight: 400; "
             "font-family: 'Newsreader', Georgia, 'Liberation Serif', "
             "'DejaVu Serif', 'Times New Roman', serif; letter-spacing: -0.02em; "
             "background: transparent; border: 0;"
         )
         hero.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_inner.addWidget(hero)
-        # 2x2 grid of suggestion cards
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(12)
+
+        # --- Subtitle (mockup L1100-1110) ---
+        sub = QLabel(
+            "ForgeMind Local listo para razonar, auditar y medir "
+            "modelos sin salir de tu PC.",
+            self.empty_state,
+        )
+        sub.setObjectName("ChatEmptySub")
+        sub.setStyleSheet(
+            "color: #a8a499; font-size: 13px; background: transparent; "
+            "border: 0; max-width: 720px;"
+        )
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub.setWordWrap(True)
+        empty_inner.addWidget(sub)
+
+        # --- 4 suggestion cards in a SINGLE row (mockup L1110-1180) ---
+        # Uses a centered QHBoxLayout (not a 2x2 QGridLayout) so the
+        # cards stay on one line up to ~960px width. The mockup also
+        # lets them wrap to 2 columns on narrower widths via media
+        # query — we approximate by capping each card's min-width.
         suggestions = [
-            ("benchmark", "Correr benchmark", "10 prompts ES · comparar modelos", "play-circle"),
-            ("config",    "Comparar modelos GGUF", "Gemma, Qwen3, Phi-4…", "package"),
-            ("metrics",   "Medir tokens/s", "RAM, latencia, t/s en vivo", "activity"),
-            ("presets",   "Probar presets", "Coding, Auditoría, Resumen…", "book"),
+            ("config",    "Comparar modelos GGUF",
+             "RAM, velocidad y calidad de cada cuantización.", "package"),
+            ("benchmark", "Correr benchmark",
+             "10 prompts ES con métricas reproducibles.", "play-circle"),
+            ("metrics",   "Medir tokens/s",
+             "Tasa de generación en tiempo real.", "activity"),
+            ("presets",   "Probar presets",
+             "Contextos optimizados para cada tarea.", "book"),
         ]
-        for i, (screen, title, sub, icon) in enumerate(suggestions):
-            card = QFrame(self.empty_state)
+        sug_row = QHBoxLayout()
+        sug_row.setSpacing(8)
+        sug_row.setContentsMargins(0, 16, 0, 0)
+        sug_row.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        sug_outer = QWidget(self.empty_state)
+        sug_outer.setMaximumWidth(820)
+        sug_outer.setStyleSheet("background: transparent; border: 0;")
+        sug_outer_lay = QHBoxLayout(sug_outer)
+        sug_outer_lay.setContentsMargins(0, 0, 0, 0)
+        sug_outer_lay.setSpacing(8)
+        sug_outer_lay.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        for screen, title, desc, icon in suggestions:
+            card = QFrame()
             card.setObjectName("SuggestionCard")
             card.setCursor(Qt.CursorShape.PointingHandCursor)
+            card.setMinimumWidth(170)
+            card.setMinimumHeight(96)
             card.setStyleSheet(
-                "QFrame#SuggestionCard { background: #282623; border: 1px solid #34312e; "
-                "border-radius: 10px; }"
-                "QFrame#SuggestionCard:hover { background: #2f2d2a; border-color: #444039; }"
+                "QFrame#SuggestionCard { background: rgba(255,255,255,0.035); "
+                "border: 1px solid rgba(255,255,255,0.075); border-radius: 12px; }"
+                "QFrame#SuggestionCard:hover { background: rgba(255,255,255,0.06); "
+                "border-color: rgba(217,119,87,0.24); }"
             )
-            card.setMinimumHeight(110)
             card_lay = QVBoxLayout(card)
-            card_lay.setContentsMargins(18, 18, 18, 18)
+            card_lay.setContentsMargins(12, 12, 12, 12)
             card_lay.setSpacing(6)
-            # Icon row
-            ico_row = QHBoxLayout()
-            ico_row.addWidget(svg_label(card, icon, color="#d97757", size=18))
-            ico_row.addStretch(1)
-            card_lay.addLayout(ico_row)
-            # Title (Newsreader serif)
+            # Icon tile (orange accent square)
+            ico_wrap = QFrame(card)
+            ico_wrap.setFixedSize(26, 26)
+            ico_wrap.setStyleSheet(
+                "background: rgba(217,119,87,0.09); border: 1px solid "
+                "rgba(217,119,87,0.2); border-radius: 8px;"
+            )
+            ico_inner = QVBoxLayout(ico_wrap)
+            ico_inner.setContentsMargins(0, 0, 0, 0)
+            ico_inner.addWidget(
+                svg_label(ico_wrap, icon, color="#d97757", size=15),
+                0, Qt.AlignmentFlag.AlignCenter,
+            )
+            card_lay.addWidget(ico_wrap)
+            # Title (sans, not serif — mockup v14 changed to sans for cards)
             t = QLabel(title, card)
             t.setStyleSheet(
-                "color: #f5f4ee; font-size: 15px; font-weight: 500; "
-                "font-family: 'Newsreader', Georgia, 'Liberation Serif', "
-                "'DejaVu Serif', 'Times New Roman', serif; "
-                "letter-spacing: -0.01em; background: transparent; border: 0;"
+                "color: #f5f4ee; font-size: 12.5px; font-weight: 600; "
+                "background: transparent; border: 0;"
             )
             card_lay.addWidget(t)
             # Subtext
-            s = QLabel(sub, card)
-            s.setStyleSheet("color: #a8a499; font-size: 12px; background: transparent; border: 0;")
+            s = QLabel(desc, card)
+            s.setStyleSheet(
+                "color: #787469; font-size: 11.2px; line-height: 1.35; "
+                "background: transparent; border: 0;"
+            )
+            s.setWordWrap(True)
             card_lay.addWidget(s)
             card_lay.addStretch(1)
             # Wire click: go to that screen
             card.mousePressEvent = (lambda ev, sc=screen: self._on_suggestion_click(sc))
-            row, col = divmod(i, 2)
-            grid.addWidget(card, row, col)
-        empty_inner.addLayout(grid)
+            sug_outer_lay.addWidget(card, 1)
+        sug_row.addWidget(sug_outer, 0, Qt.AlignmentFlag.AlignHCenter)
+        empty_inner.addLayout(sug_row)
         empty_outer.addWidget(self.empty_state, 0)
         empty_outer.addStretch(1)
         # The empty state is added to root AFTER the scroll (z-order doesn't
@@ -1944,14 +2103,31 @@ class ChatScreen(QWidget):
         comp_lay.setContentsMargins(14, 14, 14, 10)
         comp_lay.setSpacing(6)
         self._composer_frame = comp
-        self.edit = QPlainTextEdit(comp)
+
+        # --- composer-input-shell (mockup v14 L880-895) ---
+        # A dedicated inner QFrame around the textarea so the focus
+        # border stays on the shell, not on the whole composer card.
+        # Qt's QPlainTextEdit can take focus styling, but isolating the
+        # border keeps the send button free of any accent glow.
+        shell = QFrame(comp)
+        shell.setObjectName("ComposerInputShell")
+        shell.setStyleSheet(
+            "QFrame#ComposerInputShell { background: transparent; border: 1px solid "
+            "rgba(255,255,255,0.10); border-radius: 10px; margin: 0 2px 8px; }"
+        )
+        shell_lay = QVBoxLayout(shell)
+        shell_lay.setContentsMargins(0, 0, 0, 0)
+        shell_lay.setSpacing(0)
+        self.edit = QPlainTextEdit(shell)
         self.edit.setObjectName("ComposerEdit")
-        self.edit.setPlaceholderText("¿En qué puedo ayudarte hoy?")
+        self.edit.setPlaceholderText("¿En qué querés resolver con el modelo local?")
         # Auto-grow: min 56, max 200 — set via _on_text_changed
         self.edit.setFixedHeight(56)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        comp_lay.addWidget(self.edit)
+        shell_lay.addWidget(self.edit)
+        comp_lay.addWidget(shell)
+        self._composer_shell = shell
 
         bar = QHBoxLayout()
         bar.setSpacing(8)
@@ -1974,6 +2150,30 @@ class ChatScreen(QWidget):
         pp_chev = svg_label(self.preset_pill, "preset-dot", color="#787469", size=12)
         pp_row.addWidget(pp_chev)
         bar.addWidget(self.preset_pill)
+        bar.addStretch(1)
+        # model select pill (mockup v14 L924-935): green dot + model name
+        # + chevron — clicks to switch to Modelo y backend.
+        self.model_pill = QPushButton(comp)
+        self.model_pill.setObjectName("ModelSelectPill")
+        self.model_pill.setCursor(Qt.CursorShape.PointingHandCursor)
+        mp_row = QHBoxLayout(self.model_pill)
+        mp_row.setContentsMargins(10, 0, 8, 0)
+        mp_row.setSpacing(7)
+        mp_dot = QFrame(self.model_pill)
+        mp_dot.setFixedSize(6, 6)
+        mp_dot.setStyleSheet(
+            "background: #8ab589; border-radius: 3px; border: 0;"
+        )
+        mp_row.addWidget(mp_dot)
+        self.model_pill_label = QLabel("(sin modelo)", self.model_pill)
+        self.model_pill_label.setStyleSheet(
+            "color: #d8d4c8; font-size: 12px; font-weight: 550; "
+            "background: transparent; border: 0;"
+        )
+        mp_row.addWidget(self.model_pill_label)
+        mp_chev = svg_label(self.model_pill, "preset-dot", color="#787469", size=12)
+        mp_row.addWidget(mp_chev)
+        bar.addWidget(self.model_pill)
         # clear btn (trash SVG icon, no more emoji glyph)
         self.clear_btn = QPushButton(comp)
         self.clear_btn.setObjectName("ToolBtn")
@@ -1985,7 +2185,6 @@ class ChatScreen(QWidget):
         cl_lay.addWidget(svg_label(self.clear_btn, "trash", color="#a8a499", size=15),
                          0, Qt.AlignmentFlag.AlignCenter)
         bar.addWidget(self.clear_btn)
-        bar.addStretch(1)
         # send btn: paper-plane SVG (no more ➤ glyph)
         self.send_btn = QPushButton(comp)
         self.send_btn.setObjectName("SendBtn")
@@ -3340,18 +3539,23 @@ class MainWindow(QMainWindow):
         # "Nuevo chat" button — accent bg, plus icon + label
         self.btn_header_new_chat = QPushButton(self.header)
         self.btn_header_new_chat.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_header_new_chat.setObjectName("HeaderNewChat")
         self.btn_header_new_chat.setStyleSheet(
-            "QPushButton { background: #d97757; color: #1f1e1d; border: 0; "
+            "QPushButton#HeaderNewChat { background: rgba(255,255,255,0.055); "
+            "color: #d8d4c8; border: 1px solid rgba(255,255,255,0.075); "
             "border-radius: 8px; padding: 0 12px; min-height: 28px; "
             "font-size: 12.5px; font-weight: 500; }"
-            "QPushButton:hover { background: #c5663f; }"
+            "QPushButton#HeaderNewChat:hover { background: rgba(255,255,255,0.085); "
+            "color: #f5f4ee; border-color: rgba(255,255,255,0.12); }"
+            "QPushButton#HeaderNewChat:pressed { padding-top: 1px; padding-bottom: -1px; }"
         )
         hnc_lay = QHBoxLayout(self.btn_header_new_chat)
         hnc_lay.setContentsMargins(0, 0, 0, 0)
         hnc_lay.setSpacing(6)
-        hnc_lay.addWidget(svg_label(self.btn_header_new_chat, "plus", color="#1f1e1d", size=14))
+        hnc_lay.addWidget(svg_label(self.btn_header_new_chat, "plus", color="#d8d4c8", size=14))
         hnc_lbl = QLabel("Nuevo chat", self.btn_header_new_chat)
-        hnc_lbl.setStyleSheet("color: #1f1e1d; font-size: 12.5px; font-weight: 500; background: transparent; border: 0;")
+        hnc_lbl.setStyleSheet("color: #d8d4c8; font-size: 12.5px; font-weight: 500; background: transparent; border: 0;")
+        hnc_lbl.setObjectName("HeaderNewChatLabel")
         hnc_lay.addWidget(hnc_lbl)
         h_right.addWidget(self.btn_header_new_chat)
 
